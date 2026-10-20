@@ -51,6 +51,7 @@ from mindora.models import (
     TestCategory,
     User,
 )
+from mindora.registration import normalize_registration_name, parse_registration_age
 from mindora.services import (
     approve_payment,
     broadcast_stats,
@@ -141,6 +142,10 @@ def safe_int(value: str) -> int | None:
 
 def _is_private_chat(message: Message) -> bool:
     return message.chat.type == "private"
+
+
+def _has_registration_details(user: User | None) -> bool:
+    return bool(user and user.age is not None and user.first_name and user.last_name)
 
 
 async def _require_private_callback(callback: CallbackQuery) -> bool:
@@ -522,29 +527,29 @@ async def start_command(message: Message) -> None:
         return
     telegram_user = message.from_user
     async with SessionFactory() as session, session.begin():
+        existing_user = await get_user_by_telegram_id(session, telegram_user.id)
         user = await upsert_user(
             session,
             telegram_id=telegram_user.id,
             username=telegram_user.username,
-            first_name=telegram_user.first_name,
-            last_name=telegram_user.last_name,
+            # Keep the name the user entered during registration; Telegram profile
+            # fields are only a fallback for the initial row.
+            first_name=existing_user.first_name if existing_user else telegram_user.first_name,
+            last_name=existing_user.last_name if existing_user else telegram_user.last_name,
         )
         await clear_state(session, telegram_user.id)
-        if user.age is None:
-            await set_state(session, telegram_user.id, "awaiting_age", {})
-            ask_age = True
-            suspended = False
-        else:
-            ask_age = False
-            suspended = user.account_status == "suspended"
+        suspended = user.account_status == "suspended"
+        ask_registration = not suspended and not _has_registration_details(user)
+        if ask_registration:
+            await set_state(session, telegram_user.id, "awaiting_first_name", {})
     if suspended:
         await message.answer(
             f"Hisobingiz vaqtincha to‘xtatilgan. Yordam uchun {ADMIN_CONTACT} bilan bog‘laning."
         )
-    elif ask_age:
+    elif ask_registration:
         await message.answer(
             "Assalomu alaykum! MINDORA’ga xush kelibsiz.\n"
-            "Sizga mos savollarni tanlash uchun yoshingizni kiriting (7–70)."
+            "Ro‘yxatdan o‘tish uchun ismingizni kiriting."
         )
     else:
         await message.answer(
@@ -566,8 +571,8 @@ async def menu_command(message: Message) -> None:
         await message.answer("Boshlash uchun /start buyrug‘ini yuboring.")
     elif user.account_status == "suspended":
         await message.answer(f"Hisobingiz vaqtincha to‘xtatilgan. {ADMIN_CONTACT} bilan bog‘laning.")
-    elif user.age is None:
-        await message.answer("Davom etish uchun yoshingizni kiriting (7–70).")
+    elif not _has_registration_details(user):
+        await message.answer("Ro‘yxatdan o‘tishni boshlash uchun /start yuboring.")
     else:
         await message.answer(
             "MINDORA bosh menyusi.",
@@ -609,9 +614,14 @@ async def cancel_command(message: Message) -> None:
         return
     async with SessionFactory() as session, session.begin():
         await clear_state(session, message.from_user.id)
-    await message.answer("Joriy amal bekor qilindi.", reply_markup=user_main_menu(
-        is_authorized_admin(message.from_user.id, settings.admin_ids)
-    ))
+    user = await get_active_user(message.from_user.id)
+    if not _has_registration_details(user):
+        await message.answer("Ro‘yxatdan o‘tish bekor qilindi. Qayta boshlash uchun /start yuboring.")
+        return
+    await message.answer(
+        "Joriy amal bekor qilindi.",
+        reply_markup=user_main_menu(is_authorized_admin(message.from_user.id, settings.admin_ids)),
+    )
 
 
 @router.callback_query(F.data.startswith("test:answer:"))
@@ -667,8 +677,8 @@ async def user_callback(callback: CallbackQuery) -> None:
     user = await get_active_user(callback.from_user.id)
     if data == "user:menu":
         await callback.answer()
-        if user is None or user.age is None:
-            await edit_or_answer(callback, "Davom etish uchun /start buyrug‘ini yuboring.")
+        if not _has_registration_details(user):
+            await edit_or_answer(callback, "Ro‘yxatdan o‘tishni boshlash uchun /start yuboring.")
         elif user.account_status == "suspended":
             await edit_or_answer(callback, f"Hisobingiz vaqtincha to‘xtatilgan. {ADMIN_CONTACT} bilan bog‘laning.")
         else:
@@ -691,8 +701,8 @@ async def user_callback(callback: CallbackQuery) -> None:
     if user is None or user.account_status != "active":
         await callback.answer("Hisob faol emas. /start buyrug‘ini yuboring.", show_alert=True)
         return
-    if user.age is None:
-        await callback.answer("Avval yoshingizni kiriting.", show_alert=True)
+    if not _has_registration_details(user):
+        await callback.answer("Avval ism, familiya va yoshingizni kiritib ro‘yxatdan o‘ting.", show_alert=True)
         return
 
     if data == "user:test-list":
@@ -1438,19 +1448,64 @@ async def handle_text_and_receipts(message: Message, bot: Bot) -> None:
         await message.answer("Administrator ruxsati mavjud emas.")
         return
 
+    if state == "awaiting_first_name":
+        try:
+            first_name = normalize_registration_name(message.text or "")
+        except ValueError as error:
+            await message.answer(f"{error}\nIsmingizni qaytadan yuboring.")
+            return
+        async with SessionFactory() as session, session.begin():
+            await set_state(
+                session,
+                telegram_id,
+                "awaiting_last_name",
+                {"first_name": first_name},
+            )
+        await message.answer("Endi familiyangizni kiriting.")
+        return
+
+    if state == "awaiting_last_name":
+        try:
+            last_name = normalize_registration_name(message.text or "")
+        except ValueError as error:
+            await message.answer(f"{error}\nFamiliyangizni qaytadan yuboring.")
+            return
+        first_name = payload.get("first_name")
+        if not isinstance(first_name, str) or not first_name:
+            async with SessionFactory() as session, session.begin():
+                await clear_state(session, telegram_id)
+            await message.answer("Ro‘yxatdan o‘tish ma’lumotlari topilmadi. Qayta boshlash uchun /start yuboring.")
+            return
+        async with SessionFactory() as session, session.begin():
+            await set_state(
+                session,
+                telegram_id,
+                "awaiting_age",
+                {"first_name": first_name, "last_name": last_name},
+            )
+        await message.answer(
+            "Endi yoshingizni kiriting (7–70 oralig‘ida butun son)."
+        )
+        return
+
     if state == "awaiting_age":
-        text = (message.text or "").strip()
-        if not text.isdecimal() or not 7 <= int(text) <= 70:
-            await message.answer("Yoshingizni 7 dan 70 gacha bo‘lgan butun son bilan kiriting.")
+        try:
+            age = parse_registration_age(message.text or "")
+            first_name = normalize_registration_name(payload.get("first_name", ""))
+            last_name = normalize_registration_name(payload.get("last_name", ""))
+        except (ValueError, TypeError) as error:
+            await message.answer(
+                f"{error}\nMa’lumotlarni qaytadan kiritish uchun /start yuboring."
+            )
             return
         async with SessionFactory() as session, session.begin():
             user = await upsert_user(
                 session,
                 telegram_id=telegram_id,
                 username=message.from_user.username,
-                first_name=message.from_user.first_name,
-                last_name=message.from_user.last_name,
-                age=int(text),
+                first_name=first_name,
+                last_name=last_name,
+                age=age,
             )
             await clear_state(session, telegram_id)
             suspended = user.account_status == "suspended"
@@ -1458,7 +1513,10 @@ async def handle_text_and_receipts(message: Message, bot: Bot) -> None:
             await message.answer(f"Hisobingiz vaqtincha to‘xtatilgan. {ADMIN_CONTACT} bilan bog‘laning.")
         else:
             await message.answer(
-                "Ro‘yxatdan o‘tish yakunlandi. Test savollari yoshingizga mos tanlanadi.",
+                f"Ro‘yxatdan o‘tish yakunlandi.\n"
+                f"Ism-familiya: {first_name} {last_name}\n"
+                f"Yosh: {age}\n"
+                "Test savollari yoshingizga mos tanlanadi.",
                 reply_markup=user_main_menu(is_authorized_admin(telegram_id, settings.admin_ids)),
             )
         return
