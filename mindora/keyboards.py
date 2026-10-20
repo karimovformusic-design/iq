@@ -196,3 +196,21 @@ def report_keyboard(report_id: int, released: bool) -> InlineKeyboardMarkup:
         rows = [[InlineKeyboardButton(text="💳 Hisobot uchun to‘lov", callback_data=f"user:pay:{report_id}")]]
     rows.append([InlineKeyboardButton(text="🔙 Hisobotlarim", callback_data="user:reports")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def completed_test_choice_keyboard(report_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="☕ Qahva", callback_data=f"user:test:coffee:{report_id}")],
+            [InlineKeyboardButton(text="🧠 Javoblarni bilish", callback_data=f"user:pay:{report_id}")],
+        ]
+    )
+
+
+def delete_test_confirmation_keyboard(report_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"user:test:choice:{report_id}")],
+            [InlineKeyboardButton(text="🗑 O‘chirib yuborish", callback_data=f"user:test:delete:{report_id}")],
+        ]
+    )

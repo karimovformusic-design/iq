@@ -1,7 +1,9 @@
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mindora.constants import QUESTION_COUNT_PER_ATTEMPT
 from mindora.db import SessionFactory, dispose_engine
 from mindora.models import BotSetting, Question, TestCategory
 from mindora.seed_data import CATEGORIES, build_question_bank
@@ -30,17 +32,46 @@ async def seed_database(session: AsyncSession) -> int:
         }
         for question in build_question_bank()
     ]
-    statement = insert(Question).values(questions).on_conflict_do_nothing(index_elements=["question_key"])
-    result = await session.execute(statement)
+    question_keys = [question["question_key"] for question in questions]
+    existing_keys = set(
+        await session.scalars(
+            select(Question.question_key).where(Question.question_key.in_(question_keys))
+        )
+    )
+    statement = insert(Question).values(questions)
+    statement = statement.on_conflict_do_update(
+        index_elements=["question_key"],
+        set_={
+            field: getattr(statement.excluded, field)
+            for field in (
+                "category_slug",
+                "age_band",
+                "prompt_uz",
+                "options_uz",
+                "correct_index",
+                "factor",
+                "reverse_scored",
+                "is_active",
+            )
+        },
+    )
+    await session.execute(statement)
 
     settings = [
-        {"setting_key": "test_attempt_question_count", "value_json": 10},
+        {"setting_key": "test_attempt_question_count", "value_json": QUESTION_COUNT_PER_ATTEMPT},
         {"setting_key": "terms_version", "value_json": 1},
     ]
     for setting in settings:
         statement = insert(BotSetting).values(**setting)
-        await session.execute(statement.on_conflict_do_nothing(index_elements=["setting_key"]))
-    return max(0, result.rowcount or 0)
+        if setting["setting_key"] == "test_attempt_question_count":
+            statement = statement.on_conflict_do_update(
+                index_elements=["setting_key"],
+                set_={"value_json": statement.excluded.value_json},
+            )
+        else:
+            statement = statement.on_conflict_do_nothing(index_elements=["setting_key"])
+        await session.execute(statement)
+    return len(questions) - len(existing_keys)
 
 
 async def main() -> None:

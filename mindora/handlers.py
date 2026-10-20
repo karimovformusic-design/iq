@@ -16,6 +16,7 @@ from mindora.constants import (
     PAYMENT_CARD_NUMBER,
     PAYMENT_RECIPIENT,
     PRICE_PER_REPORT_UZS,
+    QUESTION_COUNT_PER_ATTEMPT,
     USER_PAGE_SIZE,
     TEST_NAMES,
 )
@@ -25,12 +26,13 @@ from mindora.keyboards import (
     broadcast_confirmation_keyboard,
     broadcast_start_keyboard,
     category_toggle_keyboard,
+    completed_test_choice_keyboard,
+    delete_test_confirmation_keyboard,
     notification_settings,
     page_controls,
     payment_rejection_confirmation,
     payment_review_keyboard,
     question_options,
-    report_keyboard,
     test_categories,
     user_detail_keyboard,
     user_main_menu,
@@ -53,6 +55,7 @@ from mindora.services import (
     broadcast_stats,
     create_broadcast_job,
     dashboard_stats,
+    delete_completed_attempt_data,
     get_report_for_user,
     get_setting,
     get_user_by_telegram_id,
@@ -607,9 +610,8 @@ async def answer_question(callback: CallbackQuery, bot: Bot) -> None:
         if callback.message:
             await callback.message.answer(
                 f"Test yakunlandi: {category_name}.\n"
-                f"Shaxsiy batafsil hisobot tayyor. Hisobotni ochish uchun "
-                f"{format_uzs(PRICE_PER_REPORT_UZS)} to‘lov qilib chek yuboring.",
-                reply_markup=report_keyboard(report_id, released=False),
+                "Ertaga qahva ichamizmi yoki test javoblarini bilishni xohlaysiz?",
+                reply_markup=completed_test_choice_keyboard(report_id),
             )
     else:
         await render_question(bot, callback.from_user.id, attempt_id, position + 1, callback.from_user.id)
@@ -687,10 +689,79 @@ async def user_callback(callback: CallbackQuery) -> None:
         await callback.answer()
         if callback.message:
             await callback.message.answer(
-                "10 ta savol beriladi. Har bir savolga bir marta javob bering. "
+                f"{QUESTION_COUNT_PER_ATTEMPT} ta savol beriladi. Har bir savolga bir marta javob bering. "
                 "Javoblar administratorlarga ko‘rsatilmaydi."
             )
         await render_question(callback.bot, callback.from_user.id, attempt_id, 0, callback.from_user.id)
+        return
+
+    if data.startswith("user:test:"):
+        parts = data.split(":")
+        if len(parts) != 4 or parts[2] not in {"coffee", "choice", "delete"}:
+            await callback.answer("Noto‘g‘ri so‘rov.", show_alert=True)
+            return
+        report_id = safe_int(parts[3])
+        if report_id is None:
+            await callback.answer("Hisobot raqami noto‘g‘ri.", show_alert=True)
+            return
+
+        if parts[2] == "delete":
+            try:
+                async with SessionFactory() as session, session.begin():
+                    deleted = await delete_completed_attempt_data(
+                        session,
+                        telegram_id=callback.from_user.id,
+                        report_id=report_id,
+                    )
+            except ValueError as error:
+                await callback.answer(str(error), show_alert=True)
+                return
+            if not deleted:
+                await callback.answer("Test topilmadi yoki uni o‘chirib bo‘lmaydi.", show_alert=True)
+                return
+            await callback.answer("Test javoblari o‘chirildi.")
+            await edit_or_answer(
+                callback,
+                "Test javoblari va natijasi o‘chirildi.",
+                user_main_menu(is_authorized_admin(callback.from_user.id, settings.admin_ids)),
+            )
+            return
+
+        async with SessionFactory() as session:
+            owned = await get_report_for_user(
+                session,
+                report_id=report_id,
+                telegram_id=callback.from_user.id,
+            )
+            report = owned[0] if owned else None
+            attempt = await session.get(TestAttempt, report.attempt_id) if report else None
+            payment_id = (
+                await session.scalar(
+                    select(Payment.id).where(Payment.report_id == report_id).limit(1)
+                )
+                if report
+                else None
+            )
+        if report is None or attempt is None or attempt.status != "completed":
+            await callback.answer("Yakunlangan test topilmadi.", show_alert=True)
+            return
+        if report.released_to_user or payment_id is not None:
+            await callback.answer("Chek yuborilgan yoki to‘lovi tasdiqlangan testni o‘chirib bo‘lmaydi.", show_alert=True)
+            return
+        if parts[2] == "coffee":
+            await callback.answer()
+            await edit_or_answer(
+                callback,
+                "Test javoblari va natijasi butunlay o‘chirib yuboriladi. Davom etasizmi?",
+                delete_test_confirmation_keyboard(report_id),
+            )
+        else:
+            await callback.answer()
+            await edit_or_answer(
+                callback,
+                "Ertaga qahva ichamizmi yoki test javoblarini bilishni xohlaysiz?",
+                completed_test_choice_keyboard(report_id),
+            )
         return
 
     if data == "user:reports":

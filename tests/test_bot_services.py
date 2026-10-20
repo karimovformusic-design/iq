@@ -3,9 +3,11 @@ import random
 import pytest
 from sqlalchemy import func, select
 
-from mindora.constants import PRICE_PER_REPORT_UZS
+from mindora.constants import AGE_BANDS, PRICE_PER_REPORT_UZS, QUESTION_COUNT_PER_ATTEMPT, TEST_NAMES
+from mindora.keyboards import completed_test_choice_keyboard, delete_test_confirmation_keyboard
 from mindora.models import (
     AdminAction,
+    AssessmentReport,
     BroadcastJob,
     BroadcastRecipient,
     NotificationPreference,
@@ -19,6 +21,7 @@ from mindora.services import (
     broadcast_stats,
     create_broadcast_job,
     dashboard_stats,
+    delete_completed_attempt_data,
     get_report_for_user,
     list_users,
     reject_payment,
@@ -76,8 +79,16 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     first = await seed_database(db_session)
     second = await seed_database(db_session)
     await db_session.flush()
-    assert first == 325
+    assert first == 525
     assert second == 0
+    counts = list(
+        await db_session.execute(
+            select(Question.category_slug, Question.age_band, func.count(Question.id))
+            .group_by(Question.category_slug, Question.age_band)
+        )
+    )
+    assert len(counts) == len(TEST_NAMES) * len(AGE_BANDS)
+    assert {count for _category, _band, count in counts} == {35}
 
     user = await _registered_user(db_session, 912233441, age=70)
     attempt = await start_attempt(
@@ -87,8 +98,8 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
         sampler=random.Random(3),
     )
     assert attempt.age_band == "51-70"
-    assert len(attempt.question_order) == 10
-    assert len(set(attempt.question_order)) == 10
+    assert len(attempt.question_order) == QUESTION_COUNT_PER_ATTEMPT == 35
+    assert len(set(attempt.question_order)) == 35
 
 
 @pytest.mark.asyncio
@@ -108,11 +119,11 @@ async def test_age_validation_prevents_invalid_registration(db_session):
 async def test_answer_flow_completes_once_and_report_is_private(db_session):
     user, attempt, report = await _completed_attempt(db_session, 112233445)
     assert attempt.status == "completed"
-    assert attempt.answered_count == 10
+    assert attempt.answered_count == 35
     assert report.released_to_user is False
     assert await db_session.scalar(
         select(func.count(AnswerModel.id)).where(AnswerModel.attempt_id == attempt.id)
-    ) == 10
+    ) == 35
     assert await get_report_for_user(
         db_session,
         report_id=report.id,
@@ -131,6 +142,66 @@ async def test_answer_flow_completes_once_and_report_is_private(db_session):
             telegram_id=user.telegram_id,
             position=9,
             answer_index=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_coffee_flow_deletes_unpaid_answers_and_report(db_session):
+    user, attempt, report = await _completed_attempt(db_session, 112233450)
+    report_id = report.id
+    choice_callbacks = {
+        button.callback_data
+        for row in completed_test_choice_keyboard(report_id).inline_keyboard
+        for button in row
+    }
+    assert f"user:test:coffee:{report_id}" in choice_callbacks
+    assert f"user:pay:{report_id}" in choice_callbacks
+    confirm_callbacks = {
+        button.callback_data
+        for row in delete_test_confirmation_keyboard(report_id).inline_keyboard
+        for button in row
+    }
+    assert f"user:test:choice:{report_id}" in confirm_callbacks
+    assert f"user:test:delete:{report_id}" in confirm_callbacks
+
+    assert await delete_completed_attempt_data(
+        db_session,
+        telegram_id=user.telegram_id,
+        report_id=report_id,
+    )
+    await db_session.flush()
+    assert attempt.status == "abandoned"
+    assert attempt.answered_count == 0
+    assert attempt.score is None and attempt.max_score is None
+    assert await db_session.scalar(
+        select(func.count(AnswerModel.id)).where(AnswerModel.attempt_id == attempt.id)
+    ) == 0
+    assert await db_session.scalar(
+        select(func.count(AssessmentReport.id)).where(AssessmentReport.id == report_id)
+    ) == 0
+    assert await get_report_for_user(
+        db_session,
+        report_id=report_id,
+        telegram_id=user.telegram_id,
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_coffee_deletion_is_blocked_after_receipt_submission(db_session):
+    user, _attempt, report = await _completed_attempt(db_session, 112233451)
+    await submit_receipt(
+        db_session,
+        telegram_id=user.telegram_id,
+        report_id=report.id,
+        file_id="receipt-file",
+        file_unique_id="receipt-before-delete",
+        receipt_kind="photo",
+    )
+    with pytest.raises(ValueError, match="Chek yuborilgan"):
+        await delete_completed_attempt_data(
+            db_session,
+            telegram_id=user.telegram_id,
+            report_id=report.id,
         )
 
 

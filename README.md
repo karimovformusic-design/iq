@@ -105,7 +105,7 @@ Do not put the bot token, database URL, card number, receipts, or private report
 - Schema: `mindora/models.py`
 - Alembic configuration and first migration: `alembic.ini`, `migrations/`
 - Idempotent initial question bank: `mindora/seed_data.py`, `mindora/seed.py`
-- Test bank: 325 questions across five age bands (7–12, 13–17, 18–30, 31–50, 51–70) and three categories.
+- Test bank: 525 questions, with 35 questions for each of three categories in each of five age bands (7–12, 13–17, 18–30, 31–50, 51–70). Each test selects 35 distinct questions.
 - Broadcast delivery records move through `pending`, `sending`, `sent`, `failed`, `blocked`, and `skipped`. Consent and account status are rechecked immediately before delivery. On restart, a previously `sending` delivery is marked uncertain/failed instead of being replayed, because Telegram does not offer an idempotency key for send operations. This avoids duplicate re-sends at the cost of reporting an interrupted delivery as uncertain.
 - Service announcements go only to active users who allow service messages. Promotional messages go only to users who explicitly opt in. A user who has blocked the bot is marked unreachable and excluded from future broadcasts.
 - Admin user details show status, test history, and payment history, but never the user's answer-by-answer responses or report text.

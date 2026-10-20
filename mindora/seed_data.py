@@ -17,9 +17,48 @@ class SeedQuestion:
     reverse_scored: bool = False
 
 
+_IQ_LOGIC_ITEMS = [
+    (
+        "Barcha lolalar gul. Bu bog‘dagi ayrim gullar sariq. Qaysi xulosa aniq to‘g‘ri?",
+        ["Barcha gullar lola.", "Lola gul hisoblanadi.", "Barcha lolalar sariq.", "Sariq gullarning barchasi lola."],
+        1,
+    ),
+    (
+        "Barcha sayyohlar xarita olib yuradi. Nodira sayyoh. Qaysi xulosa aniq?",
+        ["Nodira xarita olib yuradi.", "Nodira xarita chizadi.", "Xarita olganlarning barchasi sayyoh.", "Nodira sayohat qilmaydi."],
+        0,
+    ),
+    (
+        "Agar chiroq yonsa, xona yorishadi. Chiroq yondi. Nima aniq?",
+        ["Xona qorong‘i bo‘ladi.", "Chiroq o‘chadi.", "Xona yorishadi.", "Deraza ochiladi."],
+        2,
+    ),
+    (
+        "Ba’zi kitoblar qalin. Barcha qalin kitoblarda belgi bor. Qaysi xulosa aniq?",
+        ["Barcha kitoblar qalin.", "Ayrim kitoblarda belgi bor.", "Belgi bor kitoblarning hammasi qalin.", "Qalin kitoblar kitob emas."],
+        1,
+    ),
+    (
+        "Har bir uchburchakning uchta tomoni bor. Bu shakl uchburchak. Qaysi xulosa to‘g‘ri?",
+        ["Shaklning uchta tomoni bor.", "Shakl doira.", "Uchburchakning to‘rtta tomoni bor.", "Shaklning tomonlari yo‘q."],
+        0,
+    ),
+    (
+        "Agar yomg‘ir yog‘sa, yo‘lak nam bo‘ladi. Yomg‘ir yog‘di. Qaysi xulosa aniq?",
+        ["Yo‘lak quruq.", "Yomg‘ir to‘xtadi.", "Yo‘lak nam bo‘ladi.", "Ko‘chada odam yo‘q."],
+        2,
+    ),
+    (
+        "Barcha suv o‘simliklari suvda o‘sadi. Nilufar suv o‘simligi. Qaysi xulosa to‘g‘ri?",
+        ["Nilufar suvda o‘sadi.", "Suvdagi barcha o‘simliklar nilufar.", "Nilufar o‘simlik emas.", "Nilufar faqat quruqlikda o‘sadi."],
+        0,
+    ),
+]
+
+
 def _iq_questions(age_band: str, level: int) -> list[SeedQuestion]:
     questions: list[SeedQuestion] = []
-    for number in range(1, 26):
+    for number in range(1, 36):
         mode = number % 5
         if mode == 0:
             start = 2 + level * 3 + number
@@ -30,8 +69,9 @@ def _iq_questions(age_band: str, level: int) -> list[SeedQuestion]:
             prompt = f"Ketma-ketlikni davom ettiring: {', '.join(map(str, sequence))}, ?"
             correct = 0
         elif mode == 1:
-            base = 2 + level + (number % 5)
-            multiplier = 2 + (number % 2)
+            slot = number // 5
+            base = 2 + level + slot
+            multiplier = 2 + (slot % 2)
             sequence = [base * multiplier**index for index in range(4)]
             answer = base * multiplier**4
             options = [answer - base, answer, answer + base, answer * 2]
@@ -46,14 +86,7 @@ def _iq_questions(age_band: str, level: int) -> list[SeedQuestion]:
             prompt = f"Qonuniyatni aniqlang: {', '.join(map(str, sequence))}, ?"
             correct = 1
         elif mode == 3:
-            prompt = "Barcha lolalar gul. Bu bog‘dagi ayrim gullar sariq. Qaysi xulosa aniq to‘g‘ri?"
-            options = [
-                "Barcha gullar lola.",
-                "Lola gul hisoblanadi.",
-                "Barcha lolalar sariq.",
-                "Sariq gullarning barchasi lola.",
-            ]
-            correct = 1
+            prompt, options, correct = _IQ_LOGIC_ITEMS[(number // 5) % len(_IQ_LOGIC_ITEMS)]
         else:
             apple_count = 3 + level + (number % 4)
             box_count = 2 + (number % 3)
@@ -104,6 +137,21 @@ _PERSONALITY_ITEMS = [
     ("calmness", "Xato qilsam, o‘zimni uzoq vaqt ayblayman.", True),
     ("calmness", "Hayajonlangan paytimda nafasimni rostlashga harakat qilaman.", False),
     ("calmness", "O‘zgarishlarga moslashishim mumkin.", False),
+    ("curiosity", "Notanish vazifani ko‘rsam, uni o‘rganishga qiziqaman.", False),
+    ("curiosity", "Biror narsaning sababini bilishga intilaman.", False),
+    ("curiosity", "Yangi ma’lumotni eshitsam, uni tekshirib ko‘rishni yoqtiraman.", False),
+    ("reliability", "Biror ishni boshlashdan oldin kerakli narsalarni tayyorlayman.", False),
+    ("reliability", "Vazifalarimni muhimligiga qarab tartiblayman.", False),
+    ("reliability", "Boshlagan vazifamni tugatish uchun vaqt ajrataman.", False),
+    ("sociability", "Boshqalar bilan hamkorlikda ish qilish menga yoqadi.", False),
+    ("sociability", "Yangi guruhda avval tinglab, keyin suhbatga qo‘shilaman.", False),
+    ("sociability", "Ko‘pincha boshqalar bilan gaplashishdan ko‘ra yolg‘iz qolishni tanlayman.", True),
+    ("kindness", "Kelishmovchilikda boshqa odamning nuqtai nazarini tushunishga harakat qilaman.", False),
+    ("kindness", "Nizoni tinch yo‘l bilan hal qilishga intilaman.", False),
+    ("kindness", "Boshqa odamning mehnatini qadrlashimni bildirishga harakat qilaman.", False),
+    ("kindness", "Boshqalarning muvaffaqiyatidan chin dildan xursand bo‘la olaman.", False),
+    ("calmness", "Kutilmagan o‘zgarishda moslashish yo‘lini izlayman.", False),
+    ("calmness", "Xatodan keyin undan nimani o‘rganishim mumkinligini o‘ylayman.", False),
 ]
 
 _WELLBEING_ITEMS = [
@@ -127,6 +175,21 @@ _WELLBEING_ITEMS = [
     "Hordiq chiqarish uchun yoqimli mashg‘ulot topdim.",
     "Bugungi kunimda qadrlaydigan biror narsani ko‘rdim.",
     "Ertangi kun haqida umid yoki qiziqish his qildim.",
+    "Hislarimni ishonchli inson bilan bo‘lisha oldim.",
+    "Qiyin vazifani kichik qadamlarga ajratdim.",
+    "Uddalagan ishimni o‘zim e’tirof etdim.",
+    "O‘zim uchun foydali yoki yoqimli mashg‘ulotga vaqt topdim.",
+    "Kerak bo‘lganda dam olishga ruxsat berdim.",
+    "Charchaganimdan keyin tiklanish uchun vaqt ajratdim.",
+    "Men uchun muhim bo‘lgan ishga vaqt ajratdim.",
+    "Muammo chiqqanda birinchi kichik qadamni belgiladim.",
+    "Yaqinlarim bilan iliq va hurmatli muloqot qildim.",
+    "Vazifalarni rejalaganda o‘z imkoniyatlarimni hisobga oldim.",
+    "O‘zimni boshqalar bilan solishtirishni kamaytirishga harakat qildim.",
+    "Yordam so‘rash mumkinligini eslab, kerak bo‘lsa murojaat qildim.",
+    "Tanaffus yoki yengil harakat uchun vaqt ajratdim.",
+    "Uyqu va dam olishimga e’tibor berdim.",
+    "Qiyin hislarim haqida gaplashishim yoki yozishim mumkinligini esladim.",
 ]
 
 

@@ -7,7 +7,7 @@ from typing import Any
 
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,7 @@ from mindora.models import (
     BotSetting,
     BroadcastJob,
     BroadcastRecipient,
+    ConversationState,
     NotificationPreference,
     Payment,
     Question,
@@ -229,6 +230,51 @@ async def record_answer(
     session.add(report)
     await session.flush()
     return True, report
+
+
+async def delete_completed_attempt_data(
+    session: AsyncSession,
+    *,
+    telegram_id: int,
+    report_id: int,
+) -> bool:
+    row = await session.execute(
+        select(AssessmentReport, TestAttempt)
+        .join(TestAttempt, TestAttempt.id == AssessmentReport.attempt_id)
+        .join(User, User.id == AssessmentReport.user_id)
+        .where(AssessmentReport.id == report_id, User.telegram_id == telegram_id)
+        .with_for_update()
+    )
+    owned = row.one_or_none()
+    if owned is None:
+        return False
+    report, attempt = owned
+    if attempt.status != "completed":
+        return False
+    if report.released_to_user:
+        raise ValueError("To‘lov tasdiqlangan hisobotni o‘chirib bo‘lmaydi.")
+    payment_id = await session.scalar(
+        select(Payment.id).where(Payment.report_id == report.id).limit(1).with_for_update()
+    )
+    if payment_id is not None:
+        raise ValueError("Chek yuborilgan hisobotni o‘chirib bo‘lmaydi.")
+
+    await session.execute(delete(TestAnswer).where(TestAnswer.attempt_id == attempt.id))
+    state = await session.get(ConversationState, telegram_id)
+    if (
+        state is not None
+        and state.state == "awaiting_receipt"
+        and (state.payload or {}).get("report_id") == report.id
+    ):
+        await session.delete(state)
+    await session.delete(report)
+    attempt.status = "abandoned"
+    attempt.answered_count = 0
+    attempt.score = None
+    attempt.max_score = None
+    attempt.completed_at = None
+    await session.flush()
+    return True
 
 
 async def submit_receipt(
