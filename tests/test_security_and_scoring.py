@@ -1,6 +1,7 @@
 from mindora.constants import AGE_BANDS, age_band_for
 from mindora.models import Question
 from mindora.scoring import score_answers
+from mindora.seed_data import build_question_bank
 from mindora.settings import Settings, is_authorized_admin
 from mindora.broadcast_worker import _is_unreachable_bad_request
 
@@ -105,3 +106,101 @@ def test_wellbeing_report_is_non_diagnostic():
     score, maximum, report = score_answers("wellbeing", [question], [0])
     assert (score, maximum) == (0, 3)
     assert "tashxis emas" in report
+    assert all(word not in report.casefold() for word in ("mutaxassis", "murojaat", "shoshilinch yordam"))
+
+
+def test_reverse_scored_wellbeing_item_uses_four_option_scale():
+    question = Question(
+        id=4,
+        category_slug="wellbeing",
+        age_band="31-50",
+        prompt_uz="So‘nggi ikki hafta ichida dam olishga vaqt ajratish qiyin bo‘ldi.",
+        options_uz=["Hech qachon", "Kamdan-kam", "Ba’zan", "Ko‘pincha"],
+        factor="energy",
+        reverse_scored=True,
+    )
+    score, maximum, _report = score_answers("wellbeing", [question], [0])
+    assert (score, maximum) == (3, 3)
+
+
+def test_personality_report_is_detailed_and_reflects_all_five_dimensions():
+    bank = [
+        item
+        for item in build_question_bank()
+        if item.category_slug == "personality" and item.age_band == "18-30"
+    ]
+    questions = [
+        Question(
+            id=index,
+            category_slug=item.category_slug,
+            age_band=item.age_band,
+            prompt_uz=item.prompt_uz,
+            options_uz=item.options_uz,
+            factor=item.factor,
+            reverse_scored=item.reverse_scored,
+        )
+        for index, item in enumerate(bank, start=1)
+    ]
+
+    score, maximum, report = score_answers("personality", questions, [3] * len(questions))
+
+    assert maximum == 100
+    assert 0 <= score <= maximum
+    assert len(report) > 1800
+    assert "Qiziquvchanlik va yangi g‘oyalar" in report
+    assert "Hissiy muvozanat va moslashuv" in report
+
+
+def test_wellbeing_questions_are_time_bounded_and_report_is_detailed_without_referrals():
+    bank = [
+        item
+        for item in build_question_bank()
+        if item.category_slug == "wellbeing" and item.age_band == "18-30"
+    ]
+    assert len(bank) == 20
+    assert all(item.prompt_uz.startswith("So‘nggi ikki hafta ichida ") for item in bank)
+    assert {item.factor for item in bank} == {
+        "energy",
+        "interest",
+        "self_awareness",
+        "daily_routine",
+        "connection",
+    }
+    questions = [
+        Question(
+            id=index,
+            category_slug=item.category_slug,
+            age_band=item.age_band,
+            prompt_uz=item.prompt_uz,
+            options_uz=item.options_uz,
+            factor=item.factor,
+            reverse_scored=item.reverse_scored,
+        )
+        for index, item in enumerate(bank, start=1)
+    ]
+
+    score, maximum, report = score_answers("wellbeing", questions, [2] * len(questions))
+
+    assert (score, maximum) == (35, 60)
+    assert len(report) > 1800
+    assert "Quvvat va dam olish" in report
+    assert "Kichik tajriba" in report
+    assert all(word not in report.casefold() for word in ("mutaxassis", "murojaat", "shoshilinch yordam"))
+
+
+def test_professional_question_set_has_twenty_distinct_items_per_personality_dimension():
+    bank = [
+        item
+        for item in build_question_bank()
+        if item.category_slug == "personality" and item.age_band == "18-30"
+    ]
+    assert len(bank) == 20
+    assert len({item.prompt_uz for item in bank}) == 20
+    assert {factor: sum(item.factor == factor for item in bank) for factor in {item.factor for item in bank}} == {
+        "curiosity": 4,
+        "reliability": 4,
+        "sociability": 4,
+        "kindness": 4,
+        "calmness": 4,
+    }
+    assert all(item.prompt_uz.startswith("Odatda, ") for item in bank)

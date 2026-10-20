@@ -247,8 +247,8 @@ async def record_answer(
     is_correct = answer_index == question.correct_index if question.correct_index is not None else None
     if is_correct is not None:
         score_value = int(is_correct)
-    elif question.category_slug == "personality" and question.reverse_scored:
-        score_value = 4 - answer_index
+    elif question.reverse_scored:
+        score_value = len(question.options_uz) - 1 - answer_index
     else:
         score_value = answer_index
     session.add(

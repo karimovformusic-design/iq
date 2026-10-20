@@ -212,6 +212,81 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
 
 
 @pytest.mark.asyncio
+async def test_question_bank_v2_preserves_legacy_question_text_for_history(db_session):
+    await seed_database(db_session)
+    legacy = Question(
+        question_key="personality:18-30:1",
+        category_slug="personality",
+        age_band="18-30",
+        prompt_uz="Legacy wording retained for completed attempts.",
+        options_uz=["A", "B", "C", "D", "E"],
+        factor="curiosity",
+    )
+    db_session.add(legacy)
+    await db_session.flush()
+    legacy_id = legacy.id
+
+    await seed_database(db_session)
+
+    stored = await db_session.get(Question, legacy_id)
+    active_count = await db_session.scalar(
+        select(func.count(Question.id)).where(
+            Question.category_slug == "personality",
+            Question.age_band == "18-30",
+            Question.is_active.is_(True),
+        )
+    )
+    assert stored is not None
+    assert stored.prompt_uz == "Legacy wording retained for completed attempts."
+    assert stored.is_active is False
+    assert active_count == QUESTION_COUNT_PER_ATTEMPT
+
+
+@pytest.mark.asyncio
+async def test_reverse_scored_wellbeing_answer_is_normalized_in_storage_and_report(db_session):
+    await seed_database(db_session)
+    user = await _registered_user(db_session, 912233448, age=18, last_name="User")
+    question = await db_session.scalar(
+        select(Question)
+        .where(
+            Question.category_slug == "wellbeing",
+            Question.age_band == "18-30",
+            Question.reverse_scored.is_(True),
+            Question.is_active.is_(True),
+        )
+        .limit(1)
+    )
+    assert question is not None
+    attempt = AttemptModel(
+        user_id=user.id,
+        category_slug="wellbeing",
+        age_at_test=18,
+        age_band="18-30",
+        question_order=[question.id],
+    )
+    db_session.add(attempt)
+    await db_session.flush()
+
+    final, report = await record_answer(
+        db_session,
+        attempt_id=attempt.id,
+        telegram_id=user.telegram_id,
+        position=0,
+        answer_index=0,
+    )
+    answer = await db_session.scalar(
+        select(AnswerModel).where(
+            AnswerModel.attempt_id == attempt.id,
+            AnswerModel.question_id == question.id,
+        )
+    )
+
+    assert final is True and report is not None
+    assert attempt.score == 3 and attempt.max_score == 3
+    assert answer is not None and answer.score_value == 3
+
+
+@pytest.mark.asyncio
 async def test_seed_deactivates_old_excess_questions_without_deleting_them(db_session):
     await seed_database(db_session)
     legacy_question = Question(

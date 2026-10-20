@@ -59,49 +59,49 @@ def _iq_questions(age_band: str) -> list[SeedQuestion]:
 
 
 _PERSONALITY_ITEMS = [
-    ("curiosity", "Yangi narsalarni o‘rganishga qiziqaman.", False),
-    ("curiosity", "Biror mavzuni tushunish uchun savollar beraman.", False),
-    ("curiosity", "Yangi g‘oyalarni sinab ko‘rishni yoqtirmayman.", True),
-    ("curiosity", "Turli fikrlarni tinglash menga qiziq.", False),
-    ("reliability", "Boshlagan ishimni oxiriga yetkazishga harakat qilaman.", False),
-    ("reliability", "Vazifalarimni oldindan rejalashtiraman.", False),
-    ("reliability", "Muhim ishlarni tez-tez unutib qo‘yaman.", True),
-    ("reliability", "Bergan va’damni bajarishga intilaman.", False),
-    ("sociability", "Guruhda fikrimni aytish menga qulay.", False),
-    ("sociability", "Yangi odamlar bilan suhbat boshlashdan qochaman.", True),
-    ("sociability", "Yaqinlarim bilan birga vaqt o‘tkazishni yoqtiraman.", False),
-    ("sociability", "Suhbatda boshqalarning gapini tinglayman.", False),
-    ("kindness", "Boshqalarning his-tuyg‘ularini tushunishga harakat qilaman.", False),
-    ("kindness", "Kerak bo‘lsa, boshqalarga yordam beraman.", False),
-    ("kindness", "Kelishmovchilikda faqat o‘z fikrimni o‘tkazishga urinaman.", True),
-    ("kindness", "Boshqalar bilan hurmat bilan gaplashaman.", False),
-    ("calmness", "Qiyin vaziyatda tinchlanish uchun tanaffus qilaman.", False),
-    ("calmness", "Xato qilsam, o‘zimni uzoq vaqt ayblayman.", True),
-    ("calmness", "Hayajonlangan paytimda nafasimni rostlashga harakat qilaman.", False),
-    ("calmness", "O‘zgarishlarga moslashishim mumkin.", False),
+    ("curiosity", "Yangi mavzuni tushunish uchun uning sabablarini bilishga qiziqaman.", False),
+    ("curiosity", "Bir g‘oyaga turli tomondan qarab ko‘rishni yoqtiraman.", False),
+    ("curiosity", "Odatdagi yo‘ldan boshqa usulni sinab ko‘rishga tayyorman.", False),
+    ("curiosity", "Notanish mavzular bilan tanishish men uchun unchalik qiziq emas.", True),
+    ("reliability", "Vazifani boshlashdan oldin uni kichik bosqichlarga ajrataman.", False),
+    ("reliability", "Belgilagan muddatimga amal qilishga intilaman.", False),
+    ("reliability", "Boshlagan ishimni yakunlash uchun muntazam qadam tashlayman.", False),
+    ("reliability", "Vazifalarimni ko‘pincha keyinga surib qo‘yaman.", True),
+    ("sociability", "Kichik guruhda o‘z fikrimni aytish menga qulay.", False),
+    ("sociability", "Yangi odam bilan suhbat boshlashga qiynalaman.", True),
+    ("sociability", "Guruh bilan ishlaganda umumiy muhokamaga hissa qo‘shaman.", False),
+    ("sociability", "Suhbatda boshqalarning fikrini bilish uchun savol beraman.", False),
+    ("kindness", "Boshqa odam vaziyatga men ko‘rmagan tomondan qarashi mumkinligini hisobga olaman.", False),
+    ("kindness", "Kelishmovchilikda ham suhbatdoshimni hurmat bilan tinglayman.", False),
+    ("kindness", "Boshqalarning his-tuyg‘ularini payqashga e’tibor beraman.", False),
+    ("kindness", "Fikrimga qo‘shilmagan odamni tinglashni ortiqcha deb bilaman.", True),
+    ("calmness", "Kutilmagan vaziyatda avval to‘xtab, keyin harakat rejasini tuzaman.", False),
+    ("calmness", "Hayajonlanganimda e’tiborimni jamlashga yordam beradigan usulni topaman.", False),
+    ("calmness", "Rejalarim o‘zgarsa, yangi tartibga moslashib ketaman.", False),
+    ("calmness", "Mayda xato sababli o‘zimni uzoq vaqt ayblab yuraman.", True),
 ]
 
 _WELLBEING_ITEMS = [
-    "O‘zimni dam olgan va quvvatli his qildim.",
-    "Kun davomida yoqimli yoki qiziqarli ish bilan shug‘ullandim.",
-    "Ishonchli inson bilan gaplashish imkonim bo‘ldi.",
-    "Biror vazifa qiyin bo‘lsa, yordam so‘ray oldim.",
-    "Uyqum va dam olishim yetarli bo‘ldi.",
-    "O‘zimga mehr bilan munosabatda bo‘ldim.",
-    "Hissiyotlarimni tushunish uchun vaqt ajratdim.",
-    "Kundalik vazifalarimni uddalay oldim.",
-    "Meni quvontiradigan kichik bir narsani payqadim.",
-    "Boshqalardan kerakli yordam yoki dalda oldim.",
-    "Dam olish va mashg‘ulotlar o‘rtasida muvozanat saqladim.",
-    "O‘zimni jamoa yoki yaqinlarim bilan bog‘liq his qildim.",
-    "Tanaffus qilish kerakligini sezib, o‘zimga ruxsat berdim.",
-    "Qiyin paytda keyingi kichik qadamni topa oldim.",
-    "O‘zim uchun muhim bo‘lgan ishga vaqt topdim.",
-    "Atrofimdagi ishonchli insonlar bilan o‘zimni xavfsiz his qildim.",
-    "O‘zimning kuchli tomonlarimni eslay oldim.",
-    "Tanamning suv, ovqat yoki harakat kabi ehtiyojlarini payqab, ularga e’tibor berdim.",
-    "Bugungi kunimda qadrlaydigan biror narsani ko‘rdim.",
-    "Ertangi kun haqida umid yoki qiziqish his qildim.",
+    ("energy", "Ertalab o‘zimni dam olgan his qildim.", False),
+    ("energy", "Kun davomida quvvatim kundalik ishlarimga yetdi.", False),
+    ("energy", "Tanaffus yoki uyqudan keyin kuchim tiklanganini sezdim.", False),
+    ("energy", "Dam olishga vaqt ajratish menga qiyin bo‘ldi.", True),
+    ("interest", "Menga qiziq bo‘lgan mashg‘ulotga vaqt ajratdim.", False),
+    ("interest", "Yoqimli yoki kulgili lahzalarni payqadim.", False),
+    ("interest", "Yangi yoki foydali narsani o‘rganishdan zavq oldim.", False),
+    ("interest", "Kunlarimda yoqimli mashg‘ulot uchun joy topish qiyin bo‘ldi.", True),
+    ("self_awareness", "Hislarimni nomlab, nimani boshdan kechirayotganimni payqadim.", False),
+    ("self_awareness", "Xato qilganimda o‘zimga muloyim gapirishga harakat qildim.", False),
+    ("self_awareness", "Hissiyotlarimni tushunish uchun bir oz vaqt ajratdim.", False),
+    ("self_awareness", "Mayda xatoim uchun o‘zimni uzoq tanqid qildim.", True),
+    ("daily_routine", "Kundalik vazifalardan kamida bir nechtasini uddaladim.", False),
+    ("daily_routine", "Muhim ishlarim uchun keyingi qadamni belgiladim.", False),
+    ("daily_routine", "Dam olish va majburiyatlar o‘rtasida mos muvozanat topdim.", False),
+    ("daily_routine", "Oddiy vazifalar ham menga odatdagidan og‘ir tuyuldi.", True),
+    ("connection", "Yaqinlarim bilan samimiy suhbatlashdim.", False),
+    ("connection", "O‘zimni oila, do‘stlar yoki jamoaning bir qismi deb his qildim.", False),
+    ("connection", "Fikrim yoki hislarimni ishonchli inson bilan bo‘lishdim.", False),
+    ("connection", "O‘zimni atrofdagilardan uzilib qolgandek his qildim.", True),
 ]
 
 
@@ -115,27 +115,28 @@ def build_question_bank() -> list[SeedQuestion]:
         ):
             bank.append(
                 SeedQuestion(
-                    question_key=f"personality:{age_band}:{index}",
+                    question_key=f"personality:{age_band}:v2:{index}",
                     category_slug="personality",
                     age_band=age_band,
-                    prompt_uz=text,
+                    prompt_uz=f"Odatda, {text[0].lower()}{text[1:]}",
                     options_uz=["Hech qachon", "Kamdan-kam", "Ba’zan", "Ko‘pincha", "Deyarli doimo"],
                     factor=factor,
                     reverse_scored=reverse,
                 )
             )
-        for index, prompt in enumerate(
+        for index, (factor, prompt, reverse) in enumerate(
             _WELLBEING_ITEMS[:QUESTION_COUNT_PER_ATTEMPT],
             start=1,
         ):
             bank.append(
                 SeedQuestion(
-                    question_key=f"wellbeing:{age_band}:{index}",
+                    question_key=f"wellbeing:{age_band}:v2:{index}",
                     category_slug="wellbeing",
                     age_band=age_band,
-                    prompt_uz=prompt,
+                    prompt_uz=f"So‘nggi ikki hafta ichida {prompt[0].lower()}{prompt[1:]}",
                     options_uz=["Hech qachon", "Kamdan-kam", "Ba’zan", "Ko‘pincha"],
-                    factor="wellbeing",
+                    factor=factor,
+                    reverse_scored=reverse,
                 )
             )
     return bank
@@ -151,13 +152,13 @@ CATEGORIES = [
     {
         "slug": "personality",
         "name_uz": TEST_NAMES["personality"],
-        "description_uz": "O‘zini anglashga yordam beradigan, klinik bo‘lmagan so‘rovnoma.",
+        "description_uz": "Odatdagi qiziqish, ish uslubi va muloqot afzalliklarini o‘rganadigan norasmiy so‘rovnoma.",
         "sort_order": 2,
     },
     {
         "slug": "wellbeing",
         "name_uz": TEST_NAMES["wellbeing"],
-        "description_uz": "Oxirgi paytdagi kundalik farovonlikni mulohaza qilish uchun so‘rovnoma.",
+        "description_uz": "So‘nggi ikki haftadagi kundalik farovonlikni mulohaza qilish uchun norasmiy so‘rovnoma.",
         "sort_order": 3,
     },
 ]

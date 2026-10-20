@@ -839,9 +839,23 @@ async def user_callback(callback: CallbackQuery) -> None:
             return
         await callback.answer()
         if callback.message:
-            await callback.message.answer(
+            instructions = {
+                "personality": (
+                    "Javoblarni odatdagi xulqingizga qarab tanlang. Bu so‘rovnomada to‘g‘ri yoki "
+                    "noto‘g‘ri javob yo‘q; sizga eng mos keladigan variantni belgilang."
+                ),
+                "wellbeing": (
+                    "Savollar so‘nggi ikki haftani nazarda tutadi. Shu davrni yodda tutib, "
+                    "har bir holat qanchalik tez-tez bo‘lganini tanlang."
+                ),
+            }.get(slug, "")
+            intro = (
                 f"{QUESTION_COUNT_PER_ATTEMPT} ta savol beriladi. Har bir savolga bir marta javob bering. "
-                "Javoblar administratorlarga ko‘rsatilmaydi."
+                "Javoblar administratorlarga ko‘rsatilmaydi. "
+                f"{instructions}"
+            )
+            await callback.message.answer(
+                intro.strip()
             )
         await render_question(callback.bot, callback.from_user.id, attempt_id, 0, callback.from_user.id)
         return
