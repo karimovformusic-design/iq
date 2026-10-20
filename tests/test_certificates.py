@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from mindora.certificates import build_iq_completion_certificate
+from mindora.certificates import build_iq_completion_certificate, logical_reasoning_band
 from mindora.handlers import report_delivery_data, send_released_report
 from mindora.models import AssessmentReport, TestAttempt as AttemptModel, User
 
@@ -15,10 +15,27 @@ def test_iq_completion_certificate_builds_unicode_pdf():
         score=29,
         max_score=35,
         completed_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
+        age_band="13-17",
+        percentile=95,
+        cohort_size=10,
+        certificate_number=42,
     )
     assert pdf.startswith(b"%PDF-")
     assert pdf.rstrip().endswith(b"%%EOF")
     assert len(pdf) > 10_000
+
+
+@pytest.mark.parametrize(
+    ("percent", "expected"),
+    [
+        (25, ("Rivojlanish bosqichi", "Developing")),
+        (50, ("Boshlang‘ich", "Foundational")),
+        (70, ("Yaxshi", "Strong")),
+        (90, ("Yuqori", "Advanced")),
+    ],
+)
+def test_iq_certificate_performance_band_is_exercise_scoped(percent, expected):
+    assert logical_reasoning_band(percent) == expected
 
 
 @pytest.mark.parametrize(
@@ -39,6 +56,7 @@ def test_certificate_uses_registered_names_and_age_at_test():
     attempt = AttemptModel(
         category_slug="iq",
         age_at_test=17,
+        age_band="18-30",
         score=29,
         max_score=35,
         completed_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
@@ -50,6 +68,8 @@ def test_certificate_uses_registered_names_and_age_at_test():
     assert data["first_name"] == "G‘ulom"
     assert data["last_name"] == "O‘g‘li"
     assert data["age"] == 17
+    assert data["age_band"] == "18-30"
+    assert data["certificate_number"] == 42
 
 
 @pytest.mark.asyncio
@@ -76,6 +96,10 @@ async def test_iq_report_is_pdf_and_other_assessments_are_text():
         "score": 29,
         "max_score": 35,
         "completed_at": datetime(2026, 10, 20, tzinfo=timezone.utc),
+        "age_band": "13-17",
+        "iq_percentile": 95,
+        "iq_cohort_size": 10,
+        "certificate_number": 42,
     }
     await send_released_report(bot, 123, iq_data)
     assert len(bot.documents) == 1

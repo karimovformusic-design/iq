@@ -61,6 +61,7 @@ from mindora.services import (
     get_report_for_user,
     get_setting,
     get_user_by_telegram_id,
+    iq_cohort_percentile,
     list_users,
     payment_rows,
     question_for_attempt_position,
@@ -99,13 +100,32 @@ def report_delivery_data(report: AssessmentReport, user: User, attempt: TestAtte
         "category_slug": attempt.category_slug,
         "report_id": report.id,
         "report_text": report.report_text,
+        "certificate_number": report.id,
         "first_name": user.first_name,
         "last_name": user.last_name,
         "age": attempt.age_at_test,
+        "age_band": attempt.age_band,
+        "user_id": attempt.user_id,
         "score": attempt.score,
         "max_score": attempt.max_score,
         "completed_at": attempt.completed_at,
+        "iq_percentile": None,
+        "iq_cohort_size": 0,
     }
+
+
+async def prepare_report_delivery_data(
+    session,
+    report: AssessmentReport,
+    user: User,
+    attempt: TestAttempt,
+) -> dict:
+    data = report_delivery_data(report, user, attempt)
+    if attempt.category_slug == "iq":
+        percentile, cohort_size = await iq_cohort_percentile(session, attempt)
+        data["iq_percentile"] = percentile
+        data["iq_cohort_size"] = cohort_size
+    return data
 
 
 async def send_released_report(bot: Bot, chat_id: int, data: dict) -> None:
@@ -117,6 +137,10 @@ async def send_released_report(bot: Bot, chat_id: int, data: dict) -> None:
             score=data["score"],
             max_score=data["max_score"],
             completed_at=data["completed_at"],
+            age_band=data.get("age_band"),
+            percentile=data.get("iq_percentile"),
+            cohort_size=data.get("iq_cohort_size", 0),
+            certificate_number=data.get("certificate_number"),
         )
         await bot.send_document(
             chat_id,
@@ -930,25 +954,29 @@ async def user_callback(callback: CallbackQuery) -> None:
         if report_id is None:
             await callback.answer("Hisobot raqami noto‘g‘ri.", show_alert=True)
             return
+        delivery_data = None
         async with SessionFactory() as session:
             owned = await get_report_for_user(session, report_id=report_id, telegram_id=callback.from_user.id)
             report = owned[0] if owned else None
             report_user = owned[1] if owned else None
             attempt = await session.get(TestAttempt, report.attempt_id) if report else None
+            if report is not None and report_user is not None and attempt is not None:
+                delivery_data = await prepare_report_delivery_data(
+                    session,
+                    report,
+                    report_user,
+                    attempt,
+                )
         if report is None:
             await callback.answer("Hisobot topilmadi.", show_alert=True)
         elif not report.released_to_user:
             await callback.answer("Hisobotni ochish uchun avval to‘lovni tasdiqlatish kerak.", show_alert=True)
-        elif report_user is None or attempt is None:
+        elif report_user is None or attempt is None or delivery_data is None:
             await callback.answer("Hisobot ma’lumotlari topilmadi.", show_alert=True)
         else:
             await callback.answer()
             try:
-                await send_released_report(
-                    callback.bot,
-                    callback.from_user.id,
-                    report_delivery_data(report, report_user, attempt),
-                )
+                await send_released_report(callback.bot, callback.from_user.id, delivery_data)
             except Exception as error:
                 logger.warning("Report delivery failed (%s).", type(error).__name__)
         return
@@ -1253,7 +1281,7 @@ async def admin_callback(callback: CallbackQuery, bot: Bot) -> None:
                 attempt = await session.get(TestAttempt, report.attempt_id) if report else None
                 user_telegram_id = user.telegram_id if user else None
                 delivery_data = (
-                    report_delivery_data(report, user, attempt)
+                    await prepare_report_delivery_data(session, report, user, attempt)
                     if user is not None and report is not None and attempt is not None
                     else None
                 )

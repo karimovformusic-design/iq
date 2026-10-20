@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import func, select
@@ -12,7 +13,9 @@ from mindora.models import (
     BroadcastRecipient,
     NotificationPreference,
     Question,
+    TestAttempt as AttemptModel,
     TestAnswer as AnswerModel,
+    TestCategory as CategoryModel,
     User,
 )
 from mindora.seed import seed_database
@@ -23,6 +26,7 @@ from mindora.services import (
     dashboard_stats,
     delete_completed_attempt_data,
     get_report_for_user,
+    iq_cohort_percentile,
     list_users,
     reject_payment,
     record_answer,
@@ -44,6 +48,87 @@ async def _registered_user(session, telegram_id: int, age: int = 18, **kwargs) -
     )
     await session.flush()
     return user
+
+
+@pytest.mark.asyncio
+async def test_iq_percentile_uses_same_age_band_unique_users_and_minimum_sample(db_session):
+    completed_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    target_attempt = None
+    db_session.add(
+        CategoryModel(
+            slug="iq",
+            name_uz="IQ",
+            description_uz="Logical reasoning test",
+            sort_order=0,
+        )
+    )
+    await db_session.flush()
+    for index in range(10):
+        user = await _registered_user(
+            db_session,
+            120000000 + index,
+            age=18,
+            last_name="User",
+        )
+        attempt = AttemptModel(
+            user_id=user.id,
+            category_slug="iq",
+            age_at_test=18,
+            age_band="18-30",
+            question_order=[],
+            status="completed",
+            score=index,
+            max_score=20,
+            completed_at=completed_at,
+        )
+        db_session.add(attempt)
+        if index == 9:
+            target_attempt = attempt
+    await db_session.flush()
+
+    assert target_attempt is not None
+    percentile, cohort_size = await iq_cohort_percentile(db_session, target_attempt)
+    assert (percentile, cohort_size) == (95, 10)
+
+
+@pytest.mark.asyncio
+async def test_iq_percentile_is_not_reported_for_small_cohort(db_session):
+    completed_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    target_attempt = None
+    db_session.add(
+        CategoryModel(
+            slug="iq",
+            name_uz="IQ",
+            description_uz="Logical reasoning test",
+            sort_order=0,
+        )
+    )
+    await db_session.flush()
+    for index in range(9):
+        user = await _registered_user(
+            db_session,
+            121000000 + index,
+            age=18,
+            last_name="User",
+        )
+        attempt = AttemptModel(
+            user_id=user.id,
+            category_slug="iq",
+            age_at_test=18,
+            age_band="18-30",
+            question_order=[],
+            status="completed",
+            score=index,
+            max_score=20,
+            completed_at=completed_at,
+        )
+        db_session.add(attempt)
+        if index == 8:
+            target_attempt = attempt
+    await db_session.flush()
+
+    assert target_attempt is not None
+    assert await iq_cohort_percentile(db_session, target_attempt) == (None, 9)
 
 
 async def _completed_attempt(session, telegram_id: int = 112233445):

@@ -46,6 +46,36 @@ def _draw_seal(pdf: Canvas, center_x: float, center_y: float) -> None:
     pdf.restoreState()
 
 
+def logical_reasoning_band(score_percent: int) -> tuple[str, str]:
+    if score_percent < 40:
+        return "Rivojlanish bosqichi", "Developing"
+    if score_percent < 60:
+        return "Boshlang‘ich", "Foundational"
+    if score_percent < 80:
+        return "Yaxshi", "Strong"
+    return "Yuqori", "Advanced"
+
+
+def _draw_centered_wrapped(
+    pdf: Canvas,
+    text: str,
+    *,
+    center_x: float,
+    y: float,
+    max_width: float,
+    font_size: float,
+    color,
+    leading: float,
+) -> float:
+    lines = simpleSplit(text, FONT_NAME, font_size, max_width)
+    pdf.setFillColor(color)
+    pdf.setFont(FONT_NAME, font_size)
+    for line in lines:
+        pdf.drawCentredString(center_x, y, line)
+        y -= leading
+    return y
+
+
 def build_iq_completion_certificate(
     *,
     first_name: str,
@@ -54,6 +84,10 @@ def build_iq_completion_certificate(
     score: int,
     max_score: int,
     completed_at: datetime | None,
+    age_band: str | None = None,
+    percentile: int | None = None,
+    cohort_size: int = 0,
+    certificate_number: int | None = None,
 ) -> bytes:
     """Build a completion certificate, not an official IQ or clinical assessment."""
     full_name = " ".join(part.strip() for part in (first_name, last_name or "") if part and part.strip())
@@ -63,11 +97,15 @@ def build_iq_completion_certificate(
         raise ValueError("Sertifikat yoshi 7–70 oralig‘ida bo‘lishi kerak.")
     if max_score <= 0 or not 0 <= score <= max_score:
         raise ValueError("Test natijasi noto‘g‘ri.")
+    if percentile is not None and not 0 <= percentile <= 100:
+        raise ValueError("Foizli o‘rin noto‘g‘ri.")
+    if cohort_size < 0:
+        raise ValueError("Taqqoslash ishtirokchilari soni noto‘g‘ri.")
 
     page_width, page_height = landscape(A4)
     output = BytesIO()
     pdf = canvas.Canvas(output, pagesize=(page_width, page_height), pageCompression=1)
-    pdf.setTitle("MINDORA — testni yakunlaganlik sertifikati")
+    pdf.setTitle("MINDORA Certificate of Completion — Logical Reasoning Practice")
     pdf.setAuthor("MINDORA bot")
 
     navy = HexColor("#16213E")
@@ -89,14 +127,25 @@ def build_iq_completion_certificate(
     pdf.drawCentredString(page_width / 2, page_height - 72, "MINDORA")
     pdf.setFillColor(muted)
     pdf.setFont(FONT_NAME, 8.5)
-    pdf.drawCentredString(page_width / 2, page_height - 89, "MINDORA BOT · TEST NATIJASI")
+    pdf.drawCentredString(
+        page_width / 2,
+        page_height - 89,
+        "MINDORA TELEGRAM BOT · CERTIFICATE OF COMPLETION",
+    )
+    if certificate_number is not None:
+        pdf.setFont(FONT_NAME, 8)
+        pdf.drawRightString(
+            page_width - 50,
+            page_height - 62,
+            f"Certificate No. MND-IQ-{certificate_number:06d}",
+        )
 
     pdf.setFillColor(purple)
-    pdf.setFont(FONT_NAME, 21)
+    pdf.setFont(FONT_NAME, 18)
     pdf.drawCentredString(
         page_width / 2,
         page_height - 137,
-        "TESTNI YAKUNLAGANLIK SERTIFIKATI",
+        "CERTIFICATE OF COMPLETION · YAKUNLAGANLIK SERTIFIKATI",
     )
     pdf.setStrokeColor(cyan)
     pdf.setLineWidth(1.2)
@@ -104,7 +153,11 @@ def build_iq_completion_certificate(
 
     pdf.setFillColor(muted)
     pdf.setFont(FONT_NAME, 10)
-    pdf.drawCentredString(page_width / 2, page_height - 184, "Mantiqiy fikrlash mashqini yakunladi:")
+    pdf.drawCentredString(
+        page_width / 2,
+        page_height - 184,
+        "Awarded to · Quyidagi ishtirokchiga taqdim etiladi:",
+    )
 
     name_size = 24
     max_name_width = page_width - 130
@@ -124,9 +177,51 @@ def build_iq_completion_certificate(
     pdf.drawCentredString(page_width / 2, info_y, f"Yoshi: {age} yosh")
 
     percent = round(score * 100 / max_score)
+    band_uz, band_en = logical_reasoning_band(percent)
     pdf.setFillColor(navy)
     pdf.setFont(FONT_NAME, 15)
-    pdf.drawCentredString(page_width / 2, info_y - 39, f"Mashq natijasi: {score}/{max_score} ({percent}%)")
+    pdf.drawCentredString(
+        page_width / 2,
+        info_y - 36,
+        f"Exercise score · Mashq natijasi: {score}/{max_score} ({percent}%)",
+    )
+
+    performance_text = (
+        f"Exercise-specific reasoning indicator · Shu mashq doirasidagi mantiqiy "
+        f"salohiyat ko‘rsatkichi: {band_en} · {band_uz}"
+    )
+    _draw_centered_wrapped(
+        pdf,
+        performance_text,
+        center_x=page_width / 2,
+        y=info_y - 58,
+        max_width=page_width - 100,
+        font_size=9.2,
+        color=navy,
+        leading=12,
+    )
+
+    if percentile is not None and cohort_size >= 10:
+        cohort_text = (
+            f"MINDORA participant percentile · MINDORA botidagi bir xil yosh guruhida "
+            f"taxminiy foizli o‘rin: {percentile}/100 (n={cohort_size}, age band · yosh guruhi "
+            f"{age_band or '—'})."
+        )
+    else:
+        cohort_text = (
+            f"Percentile not reported · Foizli taqqoslash berilmadi: bir xil yosh guruhida "
+            f"yetarli MINDORA natijasi yo‘q (n={cohort_size}, kamida 10 talab qilinadi)."
+        )
+    next_y = _draw_centered_wrapped(
+        pdf,
+        cohort_text,
+        center_x=page_width / 2,
+        y=info_y - 80,
+        max_width=page_width - 100,
+        font_size=8.3,
+        color=muted,
+        leading=10.5,
+    )
 
     if completed_at is None:
         date_label = "Sana ko‘rsatilmagan"
@@ -136,25 +231,33 @@ def build_iq_completion_certificate(
         date_label = completed_at.astimezone(LOCAL_TZ).strftime("%Y-%m-%d")
     pdf.setFillColor(muted)
     pdf.setFont(FONT_NAME, 10)
-    pdf.drawCentredString(page_width / 2, info_y - 64, f"Yakunlangan sana: {date_label}")
+    pdf.drawCentredString(
+        page_width / 2,
+        next_y - 3,
+        f"Issued on · Berilgan sana: {date_label}",
+    )
 
     disclaimer = (
-        "Ushbu hujjat MINDORA botidagi norasmiy mantiqiy fikrlash mashqini yakunlaganlikni qayd etadi. "
-        "Natija rasmiy IQ bahosi, klinik xulosa yoki tashxis emas."
+        "Bu qisqa, standartlashtirilmagan mashq rasmiy IQ yoki klinik baho emas va insonning umumiy "
+        "salohiyatini o‘lchamaydi. Foizli o‘rin faqat MINDORA botidagi shu yosh guruhining "
+        "ishtirokchilari bilan taqqoslaydi; umumiy aholi normasi emas. "
+        "This non-standardized exercise is not an official IQ or clinical assessment and does not "
+        "measure overall potential. Any percentile compares only MINDORA users in the same age band, "
+        "not the general population."
     )
-    disclaimer_lines = simpleSplit(disclaimer, FONT_NAME, 8.2, page_width - 260)
+    disclaimer_lines = simpleSplit(disclaimer, FONT_NAME, 7.2, page_width - 260)
     pdf.setFillColor(muted)
-    pdf.setFont(FONT_NAME, 8.2)
+    pdf.setFont(FONT_NAME, 7.2)
     disclaimer_x = 64
-    disclaimer_y = 101
+    disclaimer_y = 92
     for line in disclaimer_lines:
         pdf.drawString(disclaimer_x, disclaimer_y, line)
-        disclaimer_y -= 12
+        disclaimer_y -= 10
 
-    _draw_seal(pdf, page_width - 96, 101)
+    _draw_seal(pdf, page_width - 96, 91)
     pdf.setFillColor(muted)
     pdf.setFont(FONT_NAME, 7)
-    pdf.drawString(51, 48, "Avtomatik shakllantirildi · MINDORA Telegram bot")
+    pdf.drawString(51, 48, "Issued electronically by · Elektron tarzda berildi: MINDORA Telegram bot")
 
     pdf.showPage()
     pdf.save()

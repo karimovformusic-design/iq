@@ -20,6 +20,8 @@ These questionnaires are **not clinically validated**, and the reasoning result 
 
 The IQ-style PDF uses the first name and surname entered during bot registration and the age recorded for that test attempt. Every `/start` begins registration again; the prior profile remains stored until the user submits the new name, surname, and age. The main-menu **Joriy amalni bekor qilish** button (or `/cancel`) clears the saved name, surname, and age and starts registration again, while preserving test results, reports, and payment history. In an authorized admin workflow, `/cancel` only cancels that admin action.
 
+The IQ completion PDF is bilingual and includes a certificate reference number and an exercise-specific performance band. A percentile is shown only when there are at least 10 distinct MINDORA users with completed IQ results in the same age band by the test date; it is an approximate comparison within MINDORA, not a general-population norm. The document is not an accredited IQ credential, clinical assessment, or measurement of a person’s overall potential.
+
 Payments are manual. The bot records the receipt's Telegram file reference; an administrator must check the transfer in their banking app and approve or reject it. The bot does not contact a bank, verify a transfer automatically, or process refunds.
 
 The payment defaults are set in `mindora/constants.py`:
