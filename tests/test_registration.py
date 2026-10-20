@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from mindora.handlers import cancel_command
-from mindora.models import ConversationState
+from mindora.handlers import cancel_command, start_command
+from mindora.models import ConversationState, User
 from mindora.registration import normalize_registration_name, parse_registration_age
 from mindora.services import upsert_user
 
@@ -80,4 +81,50 @@ async def test_cancel_during_registration_restarts_at_first_name(db_session, mon
         state = await session.get(ConversationState, telegram_id)
     assert state is not None
     assert state.state == "awaiting_first_name"
-    assert any("Ismingizni kiriting" in response for response in message.responses)
+    assert any("ismingizni kiriting" in response.casefold() for response in message.responses)
+
+
+@pytest.mark.asyncio
+async def test_every_start_reopens_registration_without_deleting_profile(db_session, monkeypatch):
+    telegram_id = 912233444
+    factory = async_sessionmaker(
+        db_session.info["test_async_engine"],
+        expire_on_commit=False,
+    )
+    monkeypatch.setattr("mindora.handlers.SessionFactory", factory)
+    async with factory() as session, session.begin():
+        user = await upsert_user(
+            session,
+            telegram_id=telegram_id,
+            username="old_user",
+            first_name="Old",
+            last_name="Name",
+            age=25,
+        )
+        assert user.registration_completed is True
+
+    class FakeMessage:
+        from_user = SimpleNamespace(
+            id=telegram_id,
+            username="old_user",
+            first_name="Telegram",
+            last_name="Changed",
+        )
+        chat = SimpleNamespace(type="private")
+
+        def __init__(self):
+            self.responses = []
+
+        async def answer(self, text, **_kwargs):
+            self.responses.append(text)
+
+    message = FakeMessage()
+    await start_command(message)
+
+    async with factory() as session:
+        state = await session.get(ConversationState, telegram_id)
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    assert state is not None and state.state == "awaiting_first_name"
+    assert user.registration_completed is False
+    assert (user.first_name, user.last_name, user.age) == ("Old", "Name", 25)
+    assert any("ismingizni kiriting" in response.casefold() for response in message.responses)

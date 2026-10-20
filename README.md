@@ -18,7 +18,7 @@ MINDORA is a Telegram bot for three age-banded, Uzbek-language self-assessments:
 
 These questionnaires are **not clinically validated**, and the reasoning result is not an official IQ score. The IQ-style completion certificate records participation and the exercise score only; it is not an IQ qualification or credential. No accuracy percentage is claimed. The wellbeing questionnaire is not a diagnosis or substitute for professional care. The reports say this explicitly. The same general question wording is used across ages; the assessments are not age-normed instruments.
 
-The IQ-style PDF uses the first name and surname entered during bot registration and the age recorded for that test attempt. The next `/start` prompts existing accounts that have not completed the full registration form; completed profiles keep their saved information.
+The IQ-style PDF uses the first name and surname entered during bot registration and the age recorded for that test attempt. Every `/start` begins registration again; the prior profile remains stored until the user submits the new name, surname, and age.
 
 Payments are manual. The bot records the receipt's Telegram file reference; an administrator must check the transfer in their banking app and approve or reject it. The bot does not contact a bank, verify a transfer automatically, or process refunds.
 

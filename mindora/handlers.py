@@ -545,8 +545,9 @@ async def start_command(message: Message) -> None:
         )
         await clear_state(session, telegram_user.id)
         suspended = user.account_status == "suspended"
-        ask_registration = not suspended and not _has_registration_details(user)
+        ask_registration = not suspended
         if ask_registration:
+            user.registration_completed = False
             await set_state(session, telegram_user.id, "awaiting_first_name", {})
     if suspended:
         await message.answer(
