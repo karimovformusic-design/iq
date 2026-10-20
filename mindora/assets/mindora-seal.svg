@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-labelledby="title desc">
+  <title id="title">MINDORA bot seal</title>
+  <desc id="desc">Decorative MINDORA bot mark for an assessment completion certificate; not an accreditation seal.</desc>
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#36C5F0"/>
+      <stop offset="1" stop-color="#7558E8"/>
+    </linearGradient>
+  </defs>
+  <circle cx="200" cy="200" r="183" fill="#FBFCFF" stroke="#16213E" stroke-width="8"/>
+  <circle cx="200" cy="200" r="164" fill="none" stroke="url(#accent)" stroke-width="5"/>
+  <circle cx="200" cy="200" r="125" fill="#16213E"/>
+  <path d="M135 246V155h20l45 55 45-55h20v91h-22v-58l-43 51-43-51v58z" fill="url(#accent)"/>
+  <text x="200" y="288" fill="#16213E" font-family="DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" letter-spacing="3">MINDORA</text>
+  <text x="200" y="322" fill="#526079" font-family="DejaVu Sans, sans-serif" font-size="14" text-anchor="middle" letter-spacing="2">BOT · TEST YAKUNLANDI</text>
+</svg>

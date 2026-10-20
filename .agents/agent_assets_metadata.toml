@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "WiWmeXmtHSW_mO3YEqEbr"
+uri = "file://mindora/assets/mindora-seal.svg"
+type = "image"
+title = "MINDORA bot muhri"
+description = "MINDORA bot uchun tayyorlangan, rasmiy akkreditatsiyani anglatmaydigan vektor muhr."
+logical_id = "4eb6f1fa-5d62-4879-a412-49f7498843b7"
+content_hash = "sha256:0eb0d4206cea5ff811c1f4079f91a2c98606cffa63077108f95a986a0e43cae0"
+size = 1120
+mtime_ms = 1792468758245
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:af5d154a-a8b7-4e03-a62a-80897d8d8f95/4eb6f1fa-5d62-4879-a412-49f7498843b7/039ea5f0-1f4c-4a21-9ebd-8cc06de197c9"
+storage_version_token = "1792469255126811"
+content_type = "image/svg+xml"

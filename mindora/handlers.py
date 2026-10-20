@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
 
 from mindora.constants import (
@@ -20,6 +20,7 @@ from mindora.constants import (
     USER_PAGE_SIZE,
     TEST_NAMES,
 )
+from mindora.certificates import build_iq_completion_certificate
 from mindora.db import SessionFactory
 from mindora.keyboards import (
     admin_menu,
@@ -90,6 +91,45 @@ def format_date(value: datetime | None) -> str:
 
 def format_uzs(value: int) -> str:
     return f"{value:,}".replace(",", " ") + " UZS"
+
+
+def report_delivery_data(report: AssessmentReport, user: User, attempt: TestAttempt) -> dict:
+    return {
+        "category_slug": attempt.category_slug,
+        "report_id": report.id,
+        "report_text": report.report_text,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "age": attempt.age_at_test,
+        "score": attempt.score,
+        "max_score": attempt.max_score,
+        "completed_at": attempt.completed_at,
+    }
+
+
+async def send_released_report(bot: Bot, chat_id: int, data: dict) -> None:
+    if data["category_slug"] == "iq":
+        pdf_bytes = build_iq_completion_certificate(
+            first_name=data["first_name"],
+            last_name=data["last_name"],
+            age=data["age"],
+            score=data["score"],
+            max_score=data["max_score"],
+            completed_at=data["completed_at"],
+        )
+        await bot.send_document(
+            chat_id,
+            BufferedInputFile(
+                pdf_bytes,
+                filename=f"mindora-reasoning-certificate-{data['report_id']}.pdf",
+            ),
+            caption="To‘lov tasdiqlandi. Mantiqiy fikrlash mashqini yakunlaganlik PDF sertifikati.",
+        )
+        return
+    await bot.send_message(
+        chat_id,
+        "To‘lov tasdiqlandi. Hisobotingiz:\n\n" + data["report_text"],
+    )
 
 
 def safe_int(value: str) -> int | None:
@@ -769,7 +809,7 @@ async def user_callback(callback: CallbackQuery) -> None:
             rows = list(
                 (
                     await session.execute(
-                        select(AssessmentReport, TestCategory.name_uz, TestAttempt.score, TestAttempt.max_score)
+                        select(AssessmentReport, TestCategory.name_uz)
                         .join(TestAttempt, TestAttempt.id == AssessmentReport.attempt_id)
                         .join(TestCategory, TestCategory.slug == TestAttempt.category_slug)
                         .where(AssessmentReport.user_id == user.id)
@@ -780,9 +820,13 @@ async def user_callback(callback: CallbackQuery) -> None:
             )
         lines = ["📄 Hisobotlaringiz"]
         buttons = []
-        for report, category_name, score, maximum in rows:
-            status = "ochiq" if report.released_to_user else "to‘lov kutilmoqda"
-            lines.append(f"\n#{report.id} · {category_name} · natija {score}/{maximum} · {status}")
+        for report, category_name in rows:
+            status = (
+                "PDF sertifikati tayyor"
+                if report.released_to_user
+                else "to‘lov kutilmoqda"
+            )
+            lines.append(f"\n#{report.id} · {category_name} · {status}")
             buttons.append([InlineKeyboardButton(
                 text=f"Hisobot #{report.id}",
                 callback_data=f"user:report:{report.id}",
@@ -802,14 +846,24 @@ async def user_callback(callback: CallbackQuery) -> None:
         async with SessionFactory() as session:
             owned = await get_report_for_user(session, report_id=report_id, telegram_id=callback.from_user.id)
             report = owned[0] if owned else None
+            report_user = owned[1] if owned else None
+            attempt = await session.get(TestAttempt, report.attempt_id) if report else None
         if report is None:
             await callback.answer("Hisobot topilmadi.", show_alert=True)
         elif not report.released_to_user:
             await callback.answer("Hisobotni ochish uchun avval to‘lovni tasdiqlatish kerak.", show_alert=True)
+        elif report_user is None or attempt is None:
+            await callback.answer("Hisobot ma’lumotlari topilmadi.", show_alert=True)
         else:
             await callback.answer()
-            if callback.message:
-                await callback.message.answer(report.report_text)
+            try:
+                await send_released_report(
+                    callback.bot,
+                    callback.from_user.id,
+                    report_delivery_data(report, report_user, attempt),
+                )
+            except Exception as error:
+                logger.warning("Report delivery failed (%s).", type(error).__name__)
         return
 
     if data.startswith("user:pay:"):
@@ -1109,16 +1163,21 @@ async def admin_callback(callback: CallbackQuery, bot: Bot) -> None:
                 )
                 user = await session.get(User, payment.user_id)
                 report = await session.get(AssessmentReport, payment.report_id)
+                attempt = await session.get(TestAttempt, report.attempt_id) if report else None
                 user_telegram_id = user.telegram_id if user else None
-                report_text = report.report_text if report else None
+                delivery_data = (
+                    report_delivery_data(report, user, attempt)
+                    if user is not None and report is not None and attempt is not None
+                    else None
+                )
         except ValueError as error:
             await edit_or_answer(callback, str(error), admin_menu())
             return
-        await edit_or_answer(callback, f"To‘lov #{payment_id} tasdiqlandi. Hisobotga kirish berildi.", admin_menu())
-        if newly_approved and user_telegram_id and report_text:
+        await edit_or_answer(callback, f"To‘lov #{payment_id} tasdiqlandi.", admin_menu())
+        if newly_approved and user_telegram_id and delivery_data:
             try:
-                await bot.send_message(user_telegram_id, "To‘lov tasdiqlandi. Hisobotingiz:\n\n" + report_text)
-            except TelegramAPIError as error:
+                await send_released_report(bot, user_telegram_id, delivery_data)
+            except Exception as error:
                 logger.warning("Report release notification failed (%s).", type(error).__name__)
         return
 
