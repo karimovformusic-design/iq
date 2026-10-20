@@ -17,45 +17,282 @@ class SeedQuestion:
     reverse_scored: bool = False
 
 
-_IQ_ITEMS = [
-    ("Ketma-ketlikni davom ettiring: 3, 6, 9, 12, ?", ["14", "15", "16", "18"], 1),
-    ("Qatorning keyingi sonini toping: 2, 4, 8, 16, ?", ["24", "30", "32", "34"], 2),
-    ("Qonuniyatni davom ettiring: 1, 4, 9, 16, ?", ["20", "24", "25", "36"], 2),
-    ("Ketma-ketlikda har safar 3 ayiriladi: 20, 17, 14, 11, ?", ["7", "8", "9", "10"], 1),
-    ("Qatorni davom ettiring: 1, 3, 6, 10, ?", ["13", "14", "15", "16"], 2),
-    ("Barcha lolalar gul. Bu o‘simlik lola. Qaysi xulosa to‘g‘ri?", ["U gul.", "U daraxt.", "U hayvon.", "Xulosa qilib bo‘lmaydi."], 0),
-    ("Har bir uchburchakning 3 tomoni bor. Shakl uchburchak. Uning nechta tomoni bor?", ["2", "3", "4", "5"], 1),
-    ("Agar chiroq yonsa, xona yorishadi. Chiroq yondi. Xona haqida nima aniq?", ["Xona yorishadi.", "Deraza ochiladi.", "Xona soviydi.", "Buni aniqlab bo‘lmaydi."], 0),
-    ("Ali Barnodan katta, Barno esa Diyordan katta. Eng yoshi kim?", ["Ali", "Barno", "Diyor", "Aniqlab bo‘lmaydi."], 2),
-    ("Bugun chorshanba. Ikki kundan keyin haftaning qaysi kuni bo‘ladi?", ["Payshanba", "Juma", "Shanba", "Yakshanba"], 1),
-    ("Har bir qutida 2 ta olma bor. 3 ta qutida jami nechta olma bor?", ["5", "6", "8", "9"], 1),
-    ("5 ta qalam 10 tanga turadi. Shu narxda 3 ta qalam qancha turadi?", ["4", "5", "6", "8"], 2),
-    ("24 ta don 4 kishiga teng taqsimlandi. Har biriga nechtadan tegdi?", ["4", "5", "6", "8"], 2),
-    ("Qaysi biri hafta kuni emas?", ["Dushanba", "Seshanba", "Yanvar", "Juma"], 2),
-    ("Tish cho‘tkasi tish tozalash uchun. Taroq nima uchun ishlatiladi?", ["Soch tarash uchun", "Yozish uchun", "Ovqat pishirish uchun", "Vaqtni bilish uchun"], 0),
-    ("Qaysi shaklning burchagi yo‘q?", ["Uchburchak", "Kvadrat", "To‘g‘ri to‘rtburchak", "Doira"], 3),
-    ("Qaysi biri ovqatlanish anjomi emas?", ["Qoshiq", "Sanchqi", "Pichoq", "Yostiq"], 3),
-    ("Qatorni davom ettiring: 2, 5, 11, 23, ?", ["45", "46", "47", "48"], 2),
-    ("A, B, C, D bekatlari shu tartibda joylashgan. B bekatidan D gacha nechta bekat bor?", ["1", "2", "3", "4"], 1),
-    ("Xaltada 2 ta qizil va 3 ta ko‘k shar bor. Qaysi rangdagi shar ko‘proq?", ["Qizil", "Ko‘k", "Teng", "Aniqlab bo‘lmaydi."], 1),
-]
+IQ_QUESTION_BANK_SIZE = 100
+_IQ_AGE_LEVEL = {"7-12": 0, "13-17": 1, "18-30": 2, "31-50": 3, "51-70": 4}
+
+
+def _question_choices(answer: str | int, distractors: list[str | int], salt: int) -> tuple[list[str], int]:
+    choices = [str(answer)]
+    for item in distractors:
+        value = str(item)
+        if value not in choices:
+            choices.append(value)
+        if len(choices) == 4:
+            break
+    fallback = 1
+    while len(choices) < 4:
+        value = str(int(answer) + fallback) if str(answer).lstrip("-").isdigit() else f"{answer} {fallback}"
+        if value not in choices:
+            choices.append(value)
+        fallback += 1
+    rotation = salt % 4
+    return choices[rotation:] + choices[:rotation], (4 - rotation) % 4
 
 
 def _iq_questions(age_band: str) -> list[SeedQuestion]:
-    return [
-        SeedQuestion(
-            question_key=f"iq:{age_band}:{number}",
-            category_slug="iq",
-            age_band=age_band,
-            prompt_uz=prompt,
-            options_uz=options,
-            correct_index=correct,
+    level = _IQ_AGE_LEVEL[age_band]
+    items: list[tuple[str, str | int, list[str | int]]] = []
+
+    for index in range(20):
+        start = 5 + level * 3 + index * 2
+        first_difference = 2 + level + index % 4
+        second_difference = 1 + index % 3
+        third_difference = 1 + index % 2
+        sequence = [start]
+        current_first = first_difference
+        current_second = second_difference
+        for _ in range(5):
+            sequence.append(sequence[-1] + current_first)
+            current_first += current_second
+            current_second += third_difference
+        answer = sequence[-1] + current_first
+        items.append(
+            (
+                f"Qatorning farqlar jadvalini tahlil qilib, keyingi sonni toping: "
+                f"{', '.join(map(str, sequence))}, ?",
+                answer,
+                [answer + third_difference, answer - second_difference, answer + first_difference],
+            )
         )
-        for number, (prompt, options, correct) in enumerate(
-            _IQ_ITEMS[:QUESTION_COUNT_PER_ATTEMPT],
-            start=1,
+
+    for index in range(20):
+        first_multiplier = 2 + index % 2
+        second_multiplier = 2 + (index + 1) % 2
+        addition = 1 + level + index % 5
+        subtraction = 1 + level + index % 4
+        value = 2 + level + index % 3
+        sequence = [value]
+        for operation in range(5):
+            if operation % 2 == 0:
+                value = value * first_multiplier + addition
+            else:
+                value = value * second_multiplier - subtraction
+            sequence.append(value)
+        answer = value * first_multiplier + addition
+        items.append(
+            (
+                f"Sonlar orasidagi ikki xil amal navbatma-navbat qo‘llangan. "
+                f"Keyingi sonni toping: {', '.join(map(str, sequence))}, ?",
+                answer,
+                [answer + addition, answer - subtraction, answer * first_multiplier],
+            )
         )
+
+    for index in range(20):
+        start = 3 + level * 3 + index * 2
+        difference = 2 + level + index % 5
+        difference_growth = 1 + index % 3
+        sequence = [start]
+        current_difference = difference
+        for _ in range(4):
+            sequence.append(sequence[-1] + current_difference)
+            current_difference += difference_growth
+        answer = sequence[-1] + current_difference
+        items.append(
+            (
+                f"Sonlar orasidagi farqlar ham qonuniyat bilan o‘zgaradi. "
+                f"Keyingi sonni toping: {', '.join(map(str, sequence))}, ?",
+                answer,
+                [answer + difference_growth, answer - difference_growth, answer + difference],
+            )
+        )
+
+    for index in range(15):
+        even_start = 2 + level + index % 4
+        odd_start = even_start + 2 + index % 3
+        even_growth = 1 + index % 2
+        odd_growth = 1 + (index + 1) % 3
+        current = 8 + level * 3 + index * 2
+        sequence = [current]
+        for transition in range(6):
+            if transition % 2 == 0:
+                current += even_start + (transition // 2) * even_growth
+            else:
+                current += odd_start + (transition // 2) * odd_growth
+            sequence.append(current)
+        answer = sequence[-1] + even_start + 3 * even_growth
+        items.append(
+            (
+                f"Hadlar orasidagi farqlarning toq va juft o‘rinlari alohida o‘sadi. "
+                f"Keyingi sonni toping: {', '.join(map(str, sequence))}, ?",
+                answer,
+                [answer + even_growth, answer - odd_start, answer + odd_growth],
+            )
+        )
+
+    for index in range(10):
+        even_start = 2 + level * 2 + index * 2
+        odd_start = 5 + level + index
+        even_difference = 3 + level + index % 4
+        odd_difference = 4 + level + index % 5
+        even_growth = 1 + index % 3
+        odd_growth = 2 + index % 2
+
+        def quadratic_term(start: int, difference: int, growth: int, position: int) -> int:
+            return start + position * difference + position * (position - 1) // 2 * growth
+
+        sequence = [
+            quadratic_term(even_start, even_difference, even_growth, position // 2)
+            if position % 2 == 0
+            else quadratic_term(odd_start, odd_difference, odd_growth, position // 2)
+            for position in range(6)
+        ]
+        answer = quadratic_term(even_start, even_difference, even_growth, 3)
+        items.append(
+            (
+                f"Bu qatorda ikkita mustaqil qonuniyat navbatma-navbat berilgan; "
+                f"har ikkisining farqlari ham o‘zgaradi. Keyingi sonni toping: "
+                f"{', '.join(map(str, sequence))}, ?",
+                answer,
+                [answer + even_growth, answer - even_difference, answer + odd_difference],
+            )
+        )
+
+    symbols = ("A", "B", "C", "D", "E", "F")
+    for index in range(5):
+        a, b, c = (symbols[(index * 2 + level + offset) % len(symbols)] for offset in range(3))
+        logic_type = index % 5
+        if logic_type == 0:
+            prompt = (
+                f"Barcha {a} elementlari {b} toifasiga kiradi. Hech bir {b} "
+                f"elementi {c} toifasiga kirmaydi. Qaysi xulosa albatta to‘g‘ri?"
+            )
+            answer = f"Hech bir {a} elementi {c} toifasiga kirmaydi."
+            distractors = [
+                f"Barcha {c} elementlari {a} toifasiga kiradi.",
+                f"Ayrim {a} elementlari {c} toifasiga kiradi.",
+                f"Barcha {b} elementlari {a} toifasiga kiradi.",
+            ]
+        elif logic_type == 1:
+            prompt = f"Barcha {a} elementlari {b} toifasida. Barcha {b} elementlari {c} toifasida. Qaysi xulosa kelib chiqadi?"
+            answer = f"Barcha {a} elementlari {c} toifasida."
+            distractors = [
+                f"Barcha {c} elementlari {a} toifasida.",
+                f"Hech bir {a} elementi {c} toifasida emas.",
+                f"Barcha {b} elementlari {a} toifasida.",
+            ]
+        elif logic_type == 2:
+            prompt = f"Ayrim {a} elementlari {b} toifasida. Barcha {b} elementlari {c} toifasida. Qaysi xulosa albatta to‘g‘ri?"
+            answer = f"Ayrim {a} elementlari {c} toifasida."
+            distractors = [
+                f"Barcha {a} elementlari {c} toifasida.",
+                f"Hech bir {a} elementi {c} toifasida emas.",
+                f"Barcha {c} elementlari {a} toifasida.",
+            ]
+        elif logic_type == 3:
+            prompt = f"Hech bir {a} elementi {b} toifasida emas. Ayrim {c} elementlari {a} toifasida. Nima aniq?"
+            answer = f"Ayrim {c} elementlari {b} toifasida emas."
+            distractors = [
+                f"Barcha {c} elementlari {b} toifasida.",
+                f"Ayrim {a} elementlari {b} toifasida.",
+                f"Hech bir {c} elementi {a} toifasida emas.",
+            ]
+        else:
+            prompt = f"Barcha {a} elementlari {b} toifasida. Ayrim {c} elementlari {a} toifasida. Qaysi xulosa kelib chiqadi?"
+            answer = f"Ayrim {c} elementlari {b} toifasida."
+            distractors = [
+                f"Barcha {c} elementlari {b} toifasida.",
+                f"Hech bir {c} elementi {b} toifasida emas.",
+                f"Barcha {b} elementlari {a} toifasida.",
+            ]
+        items.append((prompt, answer, distractors))
+
+    logic_labels = (("P", "Q", "R"), ("R", "S", "T"), ("X", "Y", "Z"), ("K", "M", "N"), ("T", "V", "W"))
+    for index in range(5):
+        left, middle, right = logic_labels[(index + level) % len(logic_labels)]
+        if index % 2 == 0:
+            prompt = (
+                f"Agar {left} rost bo‘lsa, {middle} rost bo‘ladi. "
+                f"Agar {middle} rost bo‘lsa, {right} rost bo‘ladi. {right} yolg‘on. "
+                f"Qaysi xulosa mantiqan kelib chiqadi?"
+            )
+            answer = f"{left} yolg‘on."
+            distractors = [
+                f"{left} rost.",
+                f"{right} rost.",
+                f"{left} va {right} rost.",
+            ]
+        else:
+            prompt = (
+                f"Agar {left} rost bo‘lsa, {middle} rost. Agar {right} rost bo‘lsa, "
+                f"{left} ham rost. {middle} yolg‘on. {right} haqida nima aniq?"
+            )
+            answer = f"{right} yolg‘on."
+            distractors = [
+                f"{right} rost.",
+                f"{left} rost.",
+                f"{middle} rost.",
+            ]
+        items.append((prompt, answer, distractors))
+
+    matrix_rules = [
+        lambda first, second: first * first + second,
+        lambda first, second: first * second + first,
+        lambda first, second: second * second - first,
+        lambda first, second: first * (second + 2) - second,
+        lambda first, second: first * second + second * second,
     ]
+    for index in range(5):
+        rule = matrix_rules[index]
+        first = 2 + level + index
+        second = first + 2
+        rows = [
+            (first + row, second + row, rule(first + row, second + row))
+            for row in range(2)
+        ]
+        answer = rule(first + 2, second + 2)
+        items.append(
+            (
+                "Jadvaldagi har bir qatorda bir xil yashirin qoida ishlaydi. "
+                f"Uchinchi qatordagi natijani toping: {rows[0][0]}, {rows[0][1]}, {rows[0][2]}; "
+                f"{rows[1][0]}, {rows[1][1]}, {rows[1][2]}; "
+                f"{first + 2}, {second + 2}, ?",
+                answer,
+                [answer + level + 1, answer - first, answer + second],
+            )
+        )
+
+    questions = []
+    for number, (prompt, answer, distractors) in enumerate(items, start=1):
+        options, correct_index = _question_choices(answer, distractors, number + level)
+        if number <= 20:
+            factor = "cubic_differences"
+        elif number <= 40:
+            factor = "alternating_operations"
+        elif number <= 60:
+            factor = "quadratic_differences"
+        elif number <= 75:
+            factor = "alternating_difference_streams"
+        elif number <= 85:
+            factor = "interleaved_quadratic_streams"
+        elif number <= 90:
+            factor = "syllogistic_deduction"
+        elif number <= 95:
+            factor = "conditional_chains"
+        else:
+            factor = "numeric_matrices"
+        questions.append(
+            SeedQuestion(
+                question_key=f"iq:{age_band}:v2:{number}",
+                category_slug="iq",
+                age_band=age_band,
+                prompt_uz=prompt,
+                options_uz=options,
+                correct_index=correct_index,
+                factor=factor,
+            )
+        )
+    return questions
 
 
 _PERSONALITY_ITEMS = [
@@ -146,7 +383,7 @@ CATEGORIES = [
     {
         "slug": "iq",
         "name_uz": TEST_NAMES["iq"],
-        "description_uz": "Mantiqiy naqshlar va xulosalash bo‘yicha qisqa norasmiy mashq.",
+        "description_uz": "Har safar 100 original topshiriqdan 20 tasi tanlanadigan murakkab mantiq mashqi; rasmiy IQ bahosi emas.",
         "sort_order": 1,
     },
     {

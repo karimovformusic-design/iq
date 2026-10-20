@@ -86,6 +86,7 @@ class TestAttempt(Base):
     __table_args__ = (
         Index("ix_test_attempts_user_status", "user_id", "status"),
         Index("ix_test_attempts_category_status", "category_slug", "status"),
+        UniqueConstraint("category_slug", "form_fingerprint", name="uq_test_attempts_unique_form"),
     )
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
@@ -94,6 +95,7 @@ class TestAttempt(Base):
     age_at_test: Mapped[int] = mapped_column(Integer, nullable=False)
     age_band: Mapped[str] = mapped_column(String(8), nullable=False)
     question_order: Mapped[list[int]] = mapped_column(JSON_VALUE, nullable=False)
+    form_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     answered_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="in_progress", server_default="in_progress", nullable=False)
     score: Mapped[int | None] = mapped_column(Integer)

@@ -5,7 +5,7 @@ MINDORA is a Telegram bot for three age-banded, Uzbek-language self-assessments:
 ## What works
 
 - `/start` registration that asks for first name, surname, and a validated age (7–70) before opening the main menu.
-- 20 unique questions per attempt, answer validation, scoring, and a personalized report.
+- 20 questions per attempt, answer validation, scoring, and a personalized report. Each age band has a 100-item original IQ bank; test forms draw a balanced random mix of multi-step reasoning types, and an exact IQ question set is not reused.
 - After a test, users can choose to delete the result or pay to receive it. An IQ-style test produces a completion-certificate PDF after admin approval; personality and wellbeing tests provide written analysis.
 - Manual report payments at **11,900 UZS** per report, receipt upload, and administrator approval or rejection.
 - Admin access based only on numeric Telegram IDs in `ADMIN_IDS`.

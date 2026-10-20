@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import random
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,11 @@ MIN_IQ_PERCENTILE_COHORT_SIZE = 10
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _test_form_fingerprint(question_ids: list[int]) -> str:
+    canonical_ids = ",".join(str(question_id) for question_id in sorted(question_ids))
+    return hashlib.sha256(canonical_ids.encode("ascii")).hexdigest()
 
 
 async def upsert_user(
@@ -149,6 +155,33 @@ async def iq_cohort_percentile(
     return percentile, cohort_size
 
 
+def _sample_balanced_iq_form(available: list[Question], sampler: Any) -> list[Question]:
+    groups: dict[str, list[Question]] = {}
+    for question in available:
+        groups.setdefault(question.factor or "other", []).append(question)
+    if not groups:
+        raise RuntimeError("IQ savollarida turkumlar mavjud emas.")
+
+    group_names = list(groups)
+    sampler.shuffle(group_names)
+    base_count, extra_count = divmod(QUESTION_COUNT_PER_ATTEMPT, len(group_names))
+    if any(len(groups[name]) < base_count for name in group_names):
+        raise RuntimeError("Har bir IQ savol turkumida yetarli savol bo‘lishi kerak.")
+
+    selected: list[Question] = []
+    for name in group_names:
+        selected.extend(sampler.sample(groups[name], base_count))
+    if extra_count:
+        extra_groups = sampler.sample(group_names, extra_count)
+        for name in extra_groups:
+            selected_ids = {question.id for question in selected}
+            remaining = [question for question in groups[name] if question.id not in selected_ids]
+            if not remaining:
+                raise RuntimeError("IQ savol turkumida tanlash uchun savollar qolmadi.")
+            selected.extend(sampler.sample(remaining, 1))
+    return sampler.sample(selected, len(selected))
+
+
 async def start_attempt(
     session: AsyncSession,
     *,
@@ -178,23 +211,55 @@ async def start_attempt(
     )
     if len(available) < QUESTION_COUNT_PER_ATTEMPT:
         raise RuntimeError("Savollar yetarli emas. Administratorga xabar bering.")
-    selected = sampler.sample(available, QUESTION_COUNT_PER_ATTEMPT)
-
     await session.execute(
         update(TestAttempt)
         .where(TestAttempt.user_id == user.id, TestAttempt.status == "in_progress")
         .values(status="abandoned")
     )
-    attempt = TestAttempt(
-        user_id=user.id,
-        category_slug=category_slug,
-        age_at_test=user.age,
-        age_band=age_band,
-        question_order=[question.id for question in selected],
-    )
-    session.add(attempt)
-    await session.flush()
-    return attempt
+
+    if category_slug != "iq":
+        selected = sampler.sample(available, QUESTION_COUNT_PER_ATTEMPT)
+        attempt = TestAttempt(
+            user_id=user.id,
+            category_slug=category_slug,
+            age_at_test=user.age,
+            age_band=age_band,
+            question_order=[question.id for question in selected],
+        )
+        session.add(attempt)
+        await session.flush()
+        return attempt
+
+    for _ in range(25):
+        selected = _sample_balanced_iq_form(available, sampler)
+        question_order = [question.id for question in selected]
+        fingerprint = _test_form_fingerprint(question_order)
+        fingerprint_query = select(TestAttempt.id).where(
+            TestAttempt.category_slug == category_slug,
+            TestAttempt.form_fingerprint == fingerprint,
+        )
+        if await session.scalar(fingerprint_query) is not None:
+            continue
+
+        attempt = TestAttempt(
+            user_id=user.id,
+            category_slug=category_slug,
+            age_at_test=user.age,
+            age_band=age_band,
+            question_order=question_order,
+            form_fingerprint=fingerprint,
+        )
+        try:
+            async with session.begin_nested():
+                session.add(attempt)
+                await session.flush()
+        except IntegrityError:
+            if await session.scalar(fingerprint_query) is not None:
+                continue
+            raise
+        return attempt
+
+    raise RuntimeError("Yangi test shakli tuzilmadi. Birozdan keyin qayta urinib ko‘ring.")
 
 
 async def question_for_attempt_position(

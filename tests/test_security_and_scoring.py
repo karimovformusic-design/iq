@@ -1,7 +1,7 @@
 from mindora.constants import AGE_BANDS, age_band_for
 from mindora.models import Question
 from mindora.scoring import score_answers
-from mindora.seed_data import build_question_bank
+from mindora.seed_data import IQ_QUESTION_BANK_SIZE, build_question_bank
 from mindora.settings import Settings, is_authorized_admin
 from mindora.broadcast_worker import _is_unreachable_bad_request
 
@@ -204,3 +204,25 @@ def test_professional_question_set_has_twenty_distinct_items_per_personality_dim
         "calmness": 4,
     }
     assert all(item.prompt_uz.startswith("Odatda, ") for item in bank)
+
+
+def test_iq_bank_has_one_hundred_distinct_multi_step_items_per_age_band():
+    bank = build_question_bank()
+    for _minimum, _maximum, age_band in AGE_BANDS:
+        questions = [
+            item for item in bank if item.category_slug == "iq" and item.age_band == age_band
+        ]
+        prompts = {item.prompt_uz for item in questions}
+        assert len(questions) == IQ_QUESTION_BANK_SIZE == 100
+        assert len(prompts) == IQ_QUESTION_BANK_SIZE
+        assert all(
+            len(item.options_uz) == 4
+            and len(set(item.options_uz)) == 4
+            and item.correct_index is not None
+            and 0 <= item.correct_index < 4
+            for item in questions
+        )
+        assert any("farqlar jadvali" in item.prompt_uz for item in questions)
+        assert any("ikki xil amal navbatma-navbat" in item.prompt_uz for item in questions)
+        assert any("mustaqil qonuniyat navbatma-navbat" in item.prompt_uz for item in questions)
+        assert any("yashirin qoida" in item.prompt_uz for item in questions)

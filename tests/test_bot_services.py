@@ -19,6 +19,7 @@ from mindora.models import (
     User,
 )
 from mindora.seed import seed_database
+from mindora.seed_data import IQ_QUESTION_BANK_SIZE
 from mindora.services import (
     approve_payment,
     broadcast_stats,
@@ -164,7 +165,11 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     first = await seed_database(db_session)
     second = await seed_database(db_session)
     await db_session.flush()
-    assert first == 300
+    expected_total = (
+        IQ_QUESTION_BANK_SIZE * len(AGE_BANDS)
+        + QUESTION_COUNT_PER_ATTEMPT * len(AGE_BANDS) * 2
+    )
+    assert first == expected_total == 700
     assert second == 0
     counts = list(
         await db_session.execute(
@@ -174,7 +179,12 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
         )
     )
     assert len(counts) == len(TEST_NAMES) * len(AGE_BANDS)
-    assert {count for _category, _band, count in counts} == {QUESTION_COUNT_PER_ATTEMPT}
+    expected_by_category = {
+        "iq": IQ_QUESTION_BANK_SIZE,
+        "personality": QUESTION_COUNT_PER_ATTEMPT,
+        "wellbeing": QUESTION_COUNT_PER_ATTEMPT,
+    }
+    assert all(count == expected_by_category[category] for category, _band, count in counts)
 
     prompt_rows = list(
         await db_session.execute(
@@ -185,13 +195,19 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     prompts_by_cohort = {}
     for category, age_band, prompt in prompt_rows:
         prompts_by_cohort.setdefault((category, age_band), set()).add(prompt)
-    assert all(len(prompts) == QUESTION_COUNT_PER_ATTEMPT for prompts in prompts_by_cohort.values())
+    assert all(
+        len(prompts) == expected_by_category[category]
+        for (category, _age_band), prompts in prompts_by_cohort.items()
+    )
     for category in TEST_NAMES:
         category_sets = [
             prompts_by_cohort[(category, band)]
             for _minimum, _maximum, band in AGE_BANDS
         ]
-        assert all(prompts == category_sets[0] for prompts in category_sets)
+        if category == "iq":
+            assert len({frozenset(prompts) for prompts in category_sets}) == len(AGE_BANDS)
+        else:
+            assert all(prompts == category_sets[0] for prompts in category_sets)
 
     user = await _registered_user(db_session, 912233441, age=70)
     attempt = await start_attempt(
@@ -203,12 +219,47 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     assert attempt.age_band == "51-70"
     assert len(attempt.question_order) == QUESTION_COUNT_PER_ATTEMPT == 20
     assert len(set(attempt.question_order)) == QUESTION_COUNT_PER_ATTEMPT
+    assert attempt.form_fingerprint is None
     attempt_prompts = list(
         await db_session.scalars(
             select(Question.prompt_uz).where(Question.id.in_(attempt.question_order))
         )
     )
     assert len(set(attempt_prompts)) == QUESTION_COUNT_PER_ATTEMPT
+
+
+@pytest.mark.asyncio
+async def test_new_iq_users_get_different_question_sets_even_with_same_random_seed(db_session):
+    await seed_database(db_session)
+    first_user = await _registered_user(db_session, 912233451, age=24, last_name="First")
+    second_user = await _registered_user(db_session, 912233452, age=24, last_name="Second")
+
+    first_attempt = await start_attempt(
+        db_session,
+        telegram_id=first_user.telegram_id,
+        category_slug="iq",
+        sampler=random.Random(701),
+    )
+    second_attempt = await start_attempt(
+        db_session,
+        telegram_id=second_user.telegram_id,
+        category_slug="iq",
+        sampler=random.Random(701),
+    )
+
+    assert len(first_attempt.question_order) == 20
+    assert len(second_attempt.question_order) == 20
+    assert set(first_attempt.question_order) != set(second_attempt.question_order)
+    assert first_attempt.form_fingerprint != second_attempt.form_fingerprint
+    factor_counts = list(
+        await db_session.execute(
+            select(Question.factor, func.count(Question.id))
+            .where(Question.id.in_(first_attempt.question_order))
+            .group_by(Question.factor)
+        )
+    )
+    assert len(factor_counts) == 8
+    assert sorted(count for _factor, count in factor_counts) == [2, 2, 2, 2, 3, 3, 3, 3]
 
 
 @pytest.mark.asyncio
@@ -222,13 +273,24 @@ async def test_question_bank_v2_preserves_legacy_question_text_for_history(db_se
         options_uz=["A", "B", "C", "D", "E"],
         factor="curiosity",
     )
+    legacy_iq = Question(
+        question_key="iq:18-30:1",
+        category_slug="iq",
+        age_band="18-30",
+        prompt_uz="Legacy IQ question wording must remain unchanged.",
+        options_uz=["A", "B", "C", "D"],
+        correct_index=0,
+    )
     db_session.add(legacy)
+    db_session.add(legacy_iq)
     await db_session.flush()
     legacy_id = legacy.id
+    legacy_iq_id = legacy_iq.id
 
     await seed_database(db_session)
 
     stored = await db_session.get(Question, legacy_id)
+    stored_iq = await db_session.get(Question, legacy_iq_id)
     active_count = await db_session.scalar(
         select(func.count(Question.id)).where(
             Question.category_slug == "personality",
@@ -240,6 +302,9 @@ async def test_question_bank_v2_preserves_legacy_question_text_for_history(db_se
     assert stored.prompt_uz == "Legacy wording retained for completed attempts."
     assert stored.is_active is False
     assert active_count == QUESTION_COUNT_PER_ATTEMPT
+    assert stored_iq is not None
+    assert stored_iq.prompt_uz == "Legacy IQ question wording must remain unchanged."
+    assert stored_iq.is_active is False
 
 
 @pytest.mark.asyncio
