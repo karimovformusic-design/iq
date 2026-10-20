@@ -16,9 +16,9 @@ MINDORA is a Telegram bot for three age-banded, Uzbek-language self-assessments:
 
 ## Assessment and payment limitations
 
-These questionnaires are **not clinically validated**, and the reasoning result is not an official IQ score. The IQ-style completion certificate records participation and the exercise score only; it is not an IQ qualification or credential. No accuracy percentage is claimed. The wellbeing questionnaire is not a diagnosis or substitute for professional care. The reports say this explicitly. Age bands adjust question selection and wording, but they are not normed assessment instruments.
+These questionnaires are **not clinically validated**, and the reasoning result is not an official IQ score. The IQ-style completion certificate records participation and the exercise score only; it is not an IQ qualification or credential. No accuracy percentage is claimed. The wellbeing questionnaire is not a diagnosis or substitute for professional care. The reports say this explicitly. The same general question wording is used across ages; the assessments are not age-normed instruments.
 
-The IQ-style PDF uses the first name and surname entered during bot registration and the age recorded for that test attempt. New and incomplete profiles are prompted to enter all three details; complete returning profiles keep their saved information.
+The IQ-style PDF uses the first name and surname entered during bot registration and the age recorded for that test attempt. The next `/start` prompts existing accounts that have not completed the full registration form; completed profiles keep their saved information.
 
 Payments are manual. The bot records the receipt's Telegram file reference; an administrator must check the transfer in their banking app and approve or reject it. The bot does not contact a bank, verify a transfer automatically, or process refunds.
 
@@ -108,7 +108,7 @@ Do not put the bot token, database URL, card number, receipts, or private report
 - Schema: `mindora/models.py`
 - Alembic configuration and first migration: `alembic.ini`, `migrations/`
 - Idempotent initial question bank: `mindora/seed_data.py`, `mindora/seed.py`
-- Test bank: 525 questions, with 35 available questions for each of three categories in each of five age bands (7–12, 13–17, 18–30, 31–50, 51–70). Each attempt selects 20 distinct questions.
+- Active test bank: 300 questions, with 20 distinct, age-neutral questions for each of three categories in each of five age bands (7–12, 13–17, 18–30, 31–50, 51–70). Old surplus rows are deactivated, not deleted.
 - Broadcast delivery records move through `pending`, `sending`, `sent`, `failed`, `blocked`, and `skipped`. Consent and account status are rechecked immediately before delivery. On restart, a previously `sending` delivery is marked uncertain/failed instead of being replayed, because Telegram does not offer an idempotency key for send operations. This avoids duplicate re-sends at the cost of reporting an interrupted delivery as uncertain.
 - Service announcements go only to active users who allow service messages. Promotional messages go only to users who explicitly opt in. A user who has blocked the bot is marked unreachable and excluded from future broadcasts.
 - Admin user details show status, test history, and payment history, but never the user's answer-by-answer responses or report text.

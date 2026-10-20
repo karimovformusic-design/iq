@@ -145,7 +145,13 @@ def _is_private_chat(message: Message) -> bool:
 
 
 def _has_registration_details(user: User | None) -> bool:
-    return bool(user and user.age is not None and user.first_name and user.last_name)
+    return bool(
+        user
+        and user.registration_completed
+        and user.age is not None
+        and user.first_name
+        and user.last_name
+    )
 
 
 async def _require_private_callback(callback: CallbackQuery) -> bool:
@@ -612,11 +618,26 @@ async def cancel_command(message: Message) -> None:
     if not _is_private_chat(message):
         await message.answer("Joriy amalni shaxsiy chatda bekor qiling.")
         return
+    registration_states = {"awaiting_first_name", "awaiting_last_name", "awaiting_age"}
     async with SessionFactory() as session, session.begin():
-        await clear_state(session, message.from_user.id)
+        current_state = await session.get(ConversationState, message.from_user.id)
+        restart_registration = bool(
+            current_state and current_state.state in registration_states
+        )
+        if restart_registration:
+            current_state.state = "awaiting_first_name"
+            current_state.payload = {}
+        else:
+            await clear_state(session, message.from_user.id)
     user = await get_active_user(message.from_user.id)
-    if not _has_registration_details(user):
-        await message.answer("Ro‘yxatdan o‘tish bekor qilindi. Qayta boshlash uchun /start yuboring.")
+    if restart_registration or not _has_registration_details(user):
+        if not restart_registration:
+            async with SessionFactory() as session, session.begin():
+                await set_state(session, message.from_user.id, "awaiting_first_name", {})
+        await message.answer(
+            "Joriy amal bekor qilindi. Ro‘yxatdan o‘tishni qayta boshlaymiz.\n"
+            "Ismingizni kiriting."
+        )
         return
     await message.answer(
         "Joriy amal bekor qilindi.",
@@ -638,6 +659,9 @@ async def answer_question(callback: CallbackQuery, bot: Bot) -> None:
     user = await get_active_user(callback.from_user.id)
     if user is None or user.account_status != "active":
         await callback.answer("Hisob faol emas. /start buyrug‘ini yuboring.", show_alert=True)
+        return
+    if not _has_registration_details(user):
+        await callback.answer("Avval ism, familiya va yoshingizni kiritib ro‘yxatdan o‘ting.", show_alert=True)
         return
     try:
         async with SessionFactory() as session, session.begin():
@@ -1417,7 +1441,11 @@ async def show_test_management(callback: CallbackQuery) -> None:
         )
         grouped = dict(
             (
-                await session.execute(select(Question.category_slug, func.count(Question.id)).group_by(Question.category_slug))
+                await session.execute(
+                    select(Question.category_slug, func.count(Question.id))
+                    .where(Question.is_active.is_(True))
+                    .group_by(Question.category_slug)
+                )
             ).all()
         )
     await edit_or_answer(
@@ -1516,7 +1544,7 @@ async def handle_text_and_receipts(message: Message, bot: Bot) -> None:
                 f"Ro‘yxatdan o‘tish yakunlandi.\n"
                 f"Ism-familiya: {first_name} {last_name}\n"
                 f"Yosh: {age}\n"
-                "Test savollari yoshingizga mos tanlanadi.",
+                "Ro‘yxatdan o‘tish yakunlandi; testni boshlash uchun menyudan bo‘lim tanlang.",
                 reply_markup=user_main_menu(is_authorized_admin(telegram_id, settings.admin_ids)),
             )
         return

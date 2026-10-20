@@ -58,6 +58,7 @@ async def upsert_user(
             first_name=first_name[:128],
             last_name=(last_name or None),
             age=age,
+            registration_completed=bool(age is not None and first_name.strip() and (last_name or "").strip()),
         )
         session.add(user)
         await session.flush()
@@ -69,6 +70,9 @@ async def upsert_user(
         user.last_active_at = utc_now()
         if age is not None:
             user.age = age
+            user.registration_completed = bool(
+                user.first_name.strip() and (user.last_name or "").strip()
+            )
     return user
 
 

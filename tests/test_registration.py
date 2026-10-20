@@ -1,6 +1,12 @@
-import pytest
+from types import SimpleNamespace
 
+import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from mindora.handlers import cancel_command
+from mindora.models import ConversationState
 from mindora.registration import normalize_registration_name, parse_registration_age
+from mindora.services import upsert_user
 
 
 @pytest.mark.parametrize(
@@ -31,3 +37,47 @@ def test_registration_age_accepts_supported_integer_range(value, expected):
 def test_registration_age_rejects_invalid_values(value):
     with pytest.raises(ValueError):
         parse_registration_age(value)
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_registration_restarts_at_first_name(db_session, monkeypatch):
+    telegram_id = 912233443
+    factory = async_sessionmaker(
+        db_session.info["test_async_engine"],
+        expire_on_commit=False,
+    )
+    monkeypatch.setattr("mindora.handlers.SessionFactory", factory)
+    async with factory() as session, session.begin():
+        await upsert_user(
+            session,
+            telegram_id=telegram_id,
+            username=None,
+            first_name="Telegram",
+            last_name=None,
+        )
+        session.add(
+            ConversationState(
+                telegram_id=telegram_id,
+                state="awaiting_age",
+                payload={"first_name": "Test", "last_name": "User"},
+            )
+        )
+
+    class FakeMessage:
+        from_user = SimpleNamespace(id=telegram_id)
+        chat = SimpleNamespace(type="private")
+
+        def __init__(self):
+            self.responses = []
+
+        async def answer(self, text, **_kwargs):
+            self.responses.append(text)
+
+    message = FakeMessage()
+    await cancel_command(message)
+
+    async with factory() as session:
+        state = await session.get(ConversationState, telegram_id)
+    assert state is not None
+    assert state.state == "awaiting_first_name"
+    assert any("Ismingizni kiriting" in response for response in message.responses)

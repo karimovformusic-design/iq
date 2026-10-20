@@ -1,9 +1,9 @@
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mindora.constants import QUESTION_COUNT_PER_ATTEMPT
+from mindora.constants import AGE_BANDS, QUESTION_COUNT_PER_ATTEMPT
 from mindora.db import SessionFactory, dispose_engine
 from mindora.models import BotSetting, Question, TestCategory
 from mindora.seed_data import CATEGORIES, build_question_bank
@@ -33,6 +33,17 @@ async def seed_database(session: AsyncSession) -> int:
         for question in build_question_bank()
     ]
     question_keys = [question["question_key"] for question in questions]
+    for category in CATEGORIES:
+        for _minimum, _maximum, age_band in AGE_BANDS:
+            prefix = f"{category['slug']}:{age_band}:"
+            await session.execute(
+                update(Question)
+                .where(
+                    Question.question_key.like(f"{prefix}%"),
+                    Question.question_key.not_in(question_keys),
+                )
+                .values(is_active=False)
+            )
     existing_keys = set(
         await session.scalars(
             select(Question.question_key).where(Question.question_key.in_(question_keys))

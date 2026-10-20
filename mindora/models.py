@@ -41,6 +41,12 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     last_name: Mapped[str | None] = mapped_column(String(128))
     age: Mapped[int | None] = mapped_column(Integer)
+    registration_completed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
     registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     account_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)

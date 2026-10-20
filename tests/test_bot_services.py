@@ -79,16 +79,34 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     first = await seed_database(db_session)
     second = await seed_database(db_session)
     await db_session.flush()
-    assert first == 525
+    assert first == 300
     assert second == 0
     counts = list(
         await db_session.execute(
             select(Question.category_slug, Question.age_band, func.count(Question.id))
+            .where(Question.is_active.is_(True))
             .group_by(Question.category_slug, Question.age_band)
         )
     )
     assert len(counts) == len(TEST_NAMES) * len(AGE_BANDS)
-    assert {count for _category, _band, count in counts} == {35}
+    assert {count for _category, _band, count in counts} == {QUESTION_COUNT_PER_ATTEMPT}
+
+    prompt_rows = list(
+        await db_session.execute(
+            select(Question.category_slug, Question.age_band, Question.prompt_uz)
+            .where(Question.is_active.is_(True))
+        )
+    )
+    prompts_by_cohort = {}
+    for category, age_band, prompt in prompt_rows:
+        prompts_by_cohort.setdefault((category, age_band), set()).add(prompt)
+    assert all(len(prompts) == QUESTION_COUNT_PER_ATTEMPT for prompts in prompts_by_cohort.values())
+    for category in TEST_NAMES:
+        category_sets = [
+            prompts_by_cohort[(category, band)]
+            for _minimum, _maximum, band in AGE_BANDS
+        ]
+        assert all(prompts == category_sets[0] for prompts in category_sets)
 
     user = await _registered_user(db_session, 912233441, age=70)
     attempt = await start_attempt(
@@ -100,6 +118,33 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
     assert attempt.age_band == "51-70"
     assert len(attempt.question_order) == QUESTION_COUNT_PER_ATTEMPT == 20
     assert len(set(attempt.question_order)) == QUESTION_COUNT_PER_ATTEMPT
+    attempt_prompts = list(
+        await db_session.scalars(
+            select(Question.prompt_uz).where(Question.id.in_(attempt.question_order))
+        )
+    )
+    assert len(set(attempt_prompts)) == QUESTION_COUNT_PER_ATTEMPT
+
+
+@pytest.mark.asyncio
+async def test_seed_deactivates_old_excess_questions_without_deleting_them(db_session):
+    await seed_database(db_session)
+    legacy_question = Question(
+        question_key="iq:18-30:21",
+        category_slug="iq",
+        age_band="18-30",
+        prompt_uz="Old repeated question",
+        options_uz=["A", "B", "C", "D"],
+        correct_index=0,
+        is_active=True,
+    )
+    db_session.add(legacy_question)
+    await db_session.flush()
+
+    await seed_database(db_session)
+    await db_session.refresh(legacy_question)
+    assert legacy_question.is_active is False
+    assert await db_session.get(Question, legacy_question.id) is not None
 
 
 @pytest.mark.asyncio
@@ -113,6 +158,30 @@ async def test_age_validation_prevents_invalid_registration(db_session):
             last_name=None,
             age=6,
         )
+
+
+@pytest.mark.asyncio
+async def test_registration_completion_requires_name_surname_and_age(db_session):
+    user = await upsert_user(
+        db_session,
+        telegram_id=912233442,
+        username=None,
+        first_name="Telegram",
+        last_name="Profile",
+    )
+    assert user.registration_completed is False
+
+    user = await upsert_user(
+        db_session,
+        telegram_id=912233442,
+        username=None,
+        first_name="Karimov",
+        last_name="Nosirjon",
+        age=30,
+    )
+    assert user.registration_completed is True
+    assert user.first_name == "Karimov"
+    assert user.last_name == "Nosirjon"
 
 
 @pytest.mark.asyncio
