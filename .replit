@@ -26,8 +26,8 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "sh entrypoint.sh"
-waitForPort = 8080
+args = "PORT=8008 sh entrypoint.sh"
+waitForPort = 8008
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -43,3 +43,8 @@ timeoutMs = 20000
 [nix]
 channel = "stable-25_05"
 packages = ["postgresql"]
+
+[userenv]
+
+[userenv.shared]
+ADMIN_IDS = "6199569947"
