@@ -1032,11 +1032,6 @@ async def user_callback(callback: CallbackQuery) -> None:
                     f"Administrator tekshiradi. Savol bo‘lsa: {ADMIN_CONTACT}."
                     + ("\n\nOldingi chek hali tekshirilmoqda; yangi chek yuborsangiz, u almashtiriladi." if pending else "")
                 ),
-                InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="user:pay-cancel")]
-                    ]
-                ),
             )
         return
 

@@ -91,19 +91,20 @@ If it is already a Git repository, use its existing remote and push the new comm
 
 ## Railway deployment
 
-1. Create a Railway project and deploy the GitHub repository as a service. Railway detects the root `Dockerfile`.
-2. Add a PostgreSQL service to the same Railway project.
+1. In Railway, use one service for the MINDORA bot and set its Root Directory to the repository root (`/`). Do not use `artifacts/api-server` or another pnpm workspace package as the bot service. The repository's `railway.json` selects the root Python `Dockerfile`, starts `/app/entrypoint.sh`, and checks `/healthz`.
+2. Add a PostgreSQL service to the same Railway project and production environment. In the bot service's Variables, reference that service's `DATABASE_URL` (for a PostgreSQL service named `Postgres`, Railway's reference syntax is `${{Postgres.DATABASE_URL}}`). Use the actual service name; do not copy a Replit database URL or invent a hostname.
 3. In the bot service's variables, set:
    - `TELEGRAM_BOT_TOKEN` — the token from BotFather.
-   - `DATABASE_URL` — Railway's reference to the PostgreSQL service URL.
+   - `DATABASE_URL` — the PostgreSQL service reference described above.
    - `ADMIN_IDS` — comma-separated numeric Telegram administrator IDs.
    - `APP_ENV=production`.
-4. Keep the bot service at **one replica** and stop the Replit bot workflow while Railway is running. It uses Telegram long polling; multiple pollers for the same token conflict. The broadcast worker is safe against concurrent database claims, but a single bot instance is the supported polling setup.
-5. Set the service health-check path to `/healthz` if enabling Railway health checks. The container uses Railway's `PORT`.
-6. Deploy. `entrypoint.sh` runs `alembic upgrade head`, seeds the test bank idempotently, and then starts Telegram polling. Persistent users, payments, and broadcast queues live in PostgreSQL, not the container filesystem.
-7. Check the Railway service logs for startup success, then test `/start`, `/id`, a test attempt, a receipt upload, admin review, and a small confirmed broadcast before using it with real users.
+4. Keep exactly **one bot replica** and stop the Replit bot workflow while Railway is running. Telegram long polling allows only one active poller per bot token. The Railway health check is configured at `/healthz`; the app listens on Railway's injected `PORT`.
+5. Deploy. `entrypoint.sh` runs `alembic upgrade head`, seeds the test bank idempotently, and then starts Telegram polling. Persistent users, payments, and broadcast queues live in PostgreSQL, not the container filesystem.
+6. Check Railway logs for the startup line `MINDORA bot connected; polling Telegram updates.` Then test `/start`, `/id`, a test attempt, receipt upload, admin review, and a small confirmed broadcast before serving real users.
 
 Do not put the bot token, database URL, card number, receipts, or private reports in GitHub. Configure the token and database URL in Railway's variable manager.
+
+Railway's current documentation says Config as Code files such as `railway.json` are supported for existing services until 2026-12-01, after which they stop being read. This file fixes the start-command mismatch for an existing service. Also set the Dashboard Start Command to the Dockerfile default (clear the custom `pnpm` command) and the health-check path to `/healthz`, so the service remains correctly configured after that cutoff. The configuration file does not create PostgreSQL or set secrets. Do not apply project-level Railway IaC without reviewing its plan, because it can modify or remove existing services.
 
 ## Data and migration notes
 
