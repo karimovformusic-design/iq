@@ -245,6 +245,36 @@ async def get_active_user(telegram_id: int) -> User | None:
         return user
 
 
+async def reset_profile_for_registration(
+    session,
+    *,
+    telegram_id: int,
+    username: str | None,
+) -> bool:
+    user = await get_user_by_telegram_id(session, telegram_id)
+    if user is not None and user.account_status == "suspended":
+        await clear_state(session, telegram_id)
+        return False
+    user = await upsert_user(
+        session,
+        telegram_id=telegram_id,
+        username=username,
+        first_name="",
+        last_name=None,
+    )
+    user.first_name = ""
+    user.last_name = None
+    user.age = None
+    user.registration_completed = False
+    current_state = await session.get(ConversationState, telegram_id)
+    if current_state is None:
+        await set_state(session, telegram_id, "awaiting_first_name", {})
+    else:
+        current_state.state = "awaiting_first_name"
+        current_state.payload = {}
+    return True
+
+
 async def render_question(bot: Bot, chat_id: int, attempt_id: int, position: int, telegram_id: int) -> None:
     async with SessionFactory() as session:
         pair = await question_for_attempt_position(
@@ -619,30 +649,35 @@ async def cancel_command(message: Message) -> None:
     if not _is_private_chat(message):
         await message.answer("Joriy amalni shaxsiy chatda bekor qiling.")
         return
-    registration_states = {"awaiting_first_name", "awaiting_last_name", "awaiting_age"}
+    telegram_id = message.from_user.id
+    admin_workflow = False
+    authorized_admin = is_authorized_admin(telegram_id, settings.admin_ids)
+    reset_completed = False
     async with SessionFactory() as session, session.begin():
-        current_state = await session.get(ConversationState, message.from_user.id)
-        restart_registration = bool(
-            current_state and current_state.state in registration_states
-        )
-        if restart_registration:
-            current_state.state = "awaiting_first_name"
-            current_state.payload = {}
+        current_state = await session.get(ConversationState, telegram_id)
+        admin_workflow = bool(current_state and current_state.state.startswith("admin_"))
+        if admin_workflow:
+            await clear_state(session, telegram_id)
         else:
-            await clear_state(session, message.from_user.id)
-    user = await get_active_user(message.from_user.id)
-    if restart_registration or not _has_registration_details(user):
-        if not restart_registration:
-            async with SessionFactory() as session, session.begin():
-                await set_state(session, message.from_user.id, "awaiting_first_name", {})
-        await message.answer(
-            "Joriy amal bekor qilindi. Ro‘yxatdan o‘tishni qayta boshlaymiz.\n"
-            "Ismingizni kiriting."
-        )
+            reset_completed = await reset_profile_for_registration(
+                session,
+                telegram_id=telegram_id,
+                username=message.from_user.username,
+            )
+
+    if admin_workflow:
+        if authorized_admin:
+            await message.answer("Joriy administrator amali bekor qilindi.", reply_markup=admin_menu())
+        else:
+            await message.answer("Administrator ruxsati mavjud emas.")
+        return
+    if not reset_completed:
+        await message.answer(f"Hisobingiz vaqtincha to‘xtatilgan. {ADMIN_CONTACT} bilan bog‘laning.")
         return
     await message.answer(
-        "Joriy amal bekor qilindi.",
-        reply_markup=user_main_menu(is_authorized_admin(message.from_user.id, settings.admin_ids)),
+        "Joriy amal bekor qilindi. Profil ma’lumotlaringiz tozalandi; test natijalari, hisobotlar va "
+        "to‘lov tarixi saqlanadi.\n"
+        "Qayta ro‘yxatdan o‘tish uchun ismingizni kiriting."
     )
 
 
@@ -700,6 +735,23 @@ async def user_callback(callback: CallbackQuery) -> None:
         return
     data = callback.data or ""
     user = await get_active_user(callback.from_user.id)
+    if data == "user:cancel-current":
+        async with SessionFactory() as session, session.begin():
+            reset_completed = await reset_profile_for_registration(
+                session,
+                telegram_id=callback.from_user.id,
+                username=callback.from_user.username,
+            )
+        await callback.answer()
+        if not reset_completed:
+            await edit_or_answer(callback, f"Hisobingiz vaqtincha to‘xtatilgan. {ADMIN_CONTACT} bilan bog‘laning.")
+            return
+        await edit_or_answer(
+            callback,
+            "Joriy amal bekor qilindi. Profil ma’lumotlaringiz tozalandi; test natijalari, hisobotlar va "
+            "to‘lov tarixi saqlanadi.\nQayta ro‘yxatdan o‘tish uchun ismingizni kiriting.",
+        )
+        return
     if data == "user:menu":
         await callback.answer()
         if not _has_registration_details(user):

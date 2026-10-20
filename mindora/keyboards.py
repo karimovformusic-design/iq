@@ -8,6 +8,7 @@ def user_main_menu(is_admin: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🧠 Test topshirish", callback_data="user:test-list")],
         [InlineKeyboardButton(text="📄 Hisobotlarim", callback_data="user:reports")],
         [InlineKeyboardButton(text="🔔 Xabar sozlamalari", callback_data="user:notifications")],
+        [InlineKeyboardButton(text="❌ Joriy amalni bekor qilish", callback_data="user:cancel-current")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton(text="🛡 Admin panel", callback_data="admin:menu")])
