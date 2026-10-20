@@ -98,8 +98,8 @@ async def test_seed_is_idempotent_and_questions_are_age_banded(db_session):
         sampler=random.Random(3),
     )
     assert attempt.age_band == "51-70"
-    assert len(attempt.question_order) == QUESTION_COUNT_PER_ATTEMPT == 35
-    assert len(set(attempt.question_order)) == 35
+    assert len(attempt.question_order) == QUESTION_COUNT_PER_ATTEMPT == 20
+    assert len(set(attempt.question_order)) == QUESTION_COUNT_PER_ATTEMPT
 
 
 @pytest.mark.asyncio
@@ -119,11 +119,11 @@ async def test_age_validation_prevents_invalid_registration(db_session):
 async def test_answer_flow_completes_once_and_report_is_private(db_session):
     user, attempt, report = await _completed_attempt(db_session, 112233445)
     assert attempt.status == "completed"
-    assert attempt.answered_count == 35
+    assert attempt.answered_count == QUESTION_COUNT_PER_ATTEMPT
     assert report.released_to_user is False
     assert await db_session.scalar(
         select(func.count(AnswerModel.id)).where(AnswerModel.attempt_id == attempt.id)
-    ) == 35
+    ) == QUESTION_COUNT_PER_ATTEMPT
     assert await get_report_for_user(
         db_session,
         report_id=report.id,

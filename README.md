@@ -5,7 +5,7 @@ MINDORA is a Telegram bot for three age-banded, Uzbek-language self-assessments:
 ## What works
 
 - `/start` registration that asks for first name, surname, and a validated age (7–70) before opening the main menu.
-- 35 unique questions per attempt, answer validation, scoring, and a personalized report.
+- 20 unique questions per attempt, answer validation, scoring, and a personalized report.
 - After a test, users can choose to delete the result or pay to receive it. An IQ-style test produces a completion-certificate PDF after admin approval; personality and wellbeing tests provide written analysis.
 - Manual report payments at **11,900 UZS** per report, receipt upload, and administrator approval or rejection.
 - Admin access based only on numeric Telegram IDs in `ADMIN_IDS`.
@@ -108,7 +108,7 @@ Do not put the bot token, database URL, card number, receipts, or private report
 - Schema: `mindora/models.py`
 - Alembic configuration and first migration: `alembic.ini`, `migrations/`
 - Idempotent initial question bank: `mindora/seed_data.py`, `mindora/seed.py`
-- Test bank: 525 questions, with 35 questions for each of three categories in each of five age bands (7–12, 13–17, 18–30, 31–50, 51–70). Each test selects 35 distinct questions.
+- Test bank: 525 questions, with 35 available questions for each of three categories in each of five age bands (7–12, 13–17, 18–30, 31–50, 51–70). Each attempt selects 20 distinct questions.
 - Broadcast delivery records move through `pending`, `sending`, `sent`, `failed`, `blocked`, and `skipped`. Consent and account status are rechecked immediately before delivery. On restart, a previously `sending` delivery is marked uncertain/failed instead of being replayed, because Telegram does not offer an idempotency key for send operations. This avoids duplicate re-sends at the cost of reporting an interrupted delivery as uncertain.
 - Service announcements go only to active users who allow service messages. Promotional messages go only to users who explicitly opt in. A user who has blocked the bot is marked unreachable and excluded from future broadcasts.
 - Admin user details show status, test history, and payment history, but never the user's answer-by-answer responses or report text.
