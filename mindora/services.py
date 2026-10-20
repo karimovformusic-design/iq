@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 from typing import Any
 
 from zoneinfo import ZoneInfo
@@ -33,6 +34,9 @@ from mindora.models import (
     User,
 )
 from mindora.scoring import score_answers
+
+
+MIN_IQ_PERCENTILE_COHORT_SIZE = 10
 
 
 def utc_now() -> datetime:
@@ -92,6 +96,57 @@ async def get_report_for_user(
         .where(AssessmentReport.id == report_id, User.telegram_id == telegram_id)
     )
     return row.one_or_none()
+
+
+async def iq_cohort_percentile(
+    session: AsyncSession,
+    attempt: TestAttempt,
+) -> tuple[int | None, int]:
+    """Return a midrank percentile among same-age-band MINDORA users, not the public."""
+    if (
+        attempt.category_slug != "iq"
+        or attempt.user_id is None
+        or attempt.completed_at is None
+        or attempt.score is None
+        or attempt.max_score is None
+        or attempt.max_score <= 0
+    ):
+        return None, 0
+
+    rows = await session.execute(
+        select(
+            TestAttempt.user_id,
+            TestAttempt.score,
+            TestAttempt.max_score,
+        )
+        .where(
+            TestAttempt.category_slug == "iq",
+            TestAttempt.status == "completed",
+            TestAttempt.age_band == attempt.age_band,
+            TestAttempt.completed_at.is_not(None),
+            TestAttempt.completed_at <= attempt.completed_at,
+            TestAttempt.score.is_not(None),
+            TestAttempt.max_score > 0,
+        )
+        .order_by(TestAttempt.completed_at.desc(), TestAttempt.id.desc())
+    )
+
+    latest_by_user: dict[int, Fraction] = {}
+    for user_id, score, max_score in rows:
+        if user_id not in latest_by_user:
+            latest_by_user[user_id] = Fraction(score, max_score)
+
+    current_score = Fraction(attempt.score, attempt.max_score)
+    latest_by_user[attempt.user_id] = current_score
+    cohort = list(latest_by_user.values())
+    cohort_size = len(cohort)
+    if cohort_size < MIN_IQ_PERCENTILE_COHORT_SIZE:
+        return None, cohort_size
+
+    lower_count = sum(score < current_score for score in cohort)
+    equal_count = sum(score == current_score for score in cohort)
+    percentile = round(Fraction(100 * (2 * lower_count + equal_count), 2 * cohort_size))
+    return percentile, cohort_size
 
 
 async def start_attempt(
