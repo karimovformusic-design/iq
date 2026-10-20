@@ -59,7 +59,7 @@ Requirements: Python 3.12+, a PostgreSQL database, and a Telegram bot token from
    python -m pytest -q
    ```
 
-For Replit, add `TELEGRAM_BOT_TOKEN` using **Tools → Secrets**. Keep the automatically provided development `DATABASE_URL`; do not replace it with a Railway URL. Set `ADMIN_IDS` as an environment variable after retrieving the ID with `/id` in the bot. The `MINDORA Telegram Bot` workflow runs `entrypoint.sh`, which applies migrations, seeds idempotently, and starts the bot.
+For Replit, add `TELEGRAM_BOT_TOKEN` using **Tools → Secrets**. Keep the automatically provided development `DATABASE_URL`; do not replace it with a Railway URL. Set `ADMIN_IDS` as an environment variable after retrieving the ID with `/id` in the bot. The `MINDORA Telegram Bot` workflow is configured but not auto-started; start it only after configuring `ADMIN_IDS`. It runs `entrypoint.sh`, which applies migrations, seeds idempotently, and starts the bot. Do not run this workflow at the same time as the Railway service with the same token: Telegram long polling supports only one active poller.
 
 ## Get and configure an administrator Telegram ID
 
@@ -93,7 +93,7 @@ If it is already a Git repository, use its existing remote and push the new comm
    - `DATABASE_URL` — Railway's reference to the PostgreSQL service URL.
    - `ADMIN_IDS` — comma-separated numeric Telegram administrator IDs.
    - `APP_ENV=production`.
-4. Keep the bot service at **one replica**. It uses Telegram long polling; multiple pollers for the same token conflict. The broadcast worker is safe against concurrent database claims, but a single bot instance is the supported polling setup.
+4. Keep the bot service at **one replica** and stop the Replit bot workflow while Railway is running. It uses Telegram long polling; multiple pollers for the same token conflict. The broadcast worker is safe against concurrent database claims, but a single bot instance is the supported polling setup.
 5. Set the service health-check path to `/healthz` if enabling Railway health checks. The container uses Railway's `PORT`.
 6. Deploy. `entrypoint.sh` runs `alembic upgrade head`, seeds the test bank idempotently, and then starts Telegram polling. Persistent users, payments, and broadcast queues live in PostgreSQL, not the container filesystem.
 7. Check the Railway service logs for startup success, then test `/start`, `/id`, a test attempt, a receipt upload, admin review, and a small confirmed broadcast before using it with real users.

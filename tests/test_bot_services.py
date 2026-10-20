@@ -21,8 +21,10 @@ from mindora.services import (
     dashboard_stats,
     get_report_for_user,
     list_users,
+    reject_payment,
     record_answer,
     start_attempt,
+    set_user_status,
     submit_receipt,
     upsert_user,
 )
@@ -174,6 +176,41 @@ async def test_receipt_submission_and_payment_approval_are_idempotent(db_session
 
 
 @pytest.mark.asyncio
+async def test_payment_rejection_is_audited_and_does_not_release_report(db_session):
+    user, _attempt, report = await _completed_attempt(db_session, telegram_id=112233446)
+    payment = await submit_receipt(
+        db_session,
+        telegram_id=user.telegram_id,
+        report_id=report.id,
+        file_id="rejected-file",
+        file_unique_id="rejected-unique-id",
+        receipt_kind="photo",
+    )
+
+    rejected = await reject_payment(
+        db_session,
+        payment_id=payment.id,
+        admin_telegram_id=998877665,
+        reason="Chekdagi summa mos kelmadi.",
+    )
+    assert rejected.status == "rejected"
+    assert rejected.reviewed_by_telegram_id == 998877665
+    assert report.released_to_user is False
+    action = await db_session.scalar(select(AdminAction).where(AdminAction.action == "payment_rejected"))
+    assert action is not None
+    assert action.actor_telegram_id == 998877665
+    assert action.target_user_id == user.id
+    assert action.reason == "Chekdagi summa mos kelmadi."
+    with pytest.raises(ValueError):
+        await reject_payment(
+            db_session,
+            payment_id=payment.id,
+            admin_telegram_id=998877665,
+            reason="Takroriy rad etish",
+        )
+
+
+@pytest.mark.asyncio
 async def test_dashboard_and_directory_are_database_backed(db_session):
     await _completed_attempt(db_session, 123456001)
     await _registered_user(
@@ -197,6 +234,52 @@ async def test_dashboard_and_directory_are_database_backed(db_session):
     )
     assert total == 1
     assert matches[0]["user"].telegram_id == 123456002
+
+
+@pytest.mark.asyncio
+async def test_user_directory_paginates_and_moderation_is_audited(db_session):
+    users = [
+        await _registered_user(
+            db_session,
+            telegram_id=223344500 + index,
+            username=f"directory_{index}",
+            first_name=f"Directory {index}",
+        )
+        for index in range(11)
+    ]
+    first_page, total = await list_users(db_session, page=0, page_size=10)
+    second_page, second_total = await list_users(db_session, page=1, page_size=10)
+    assert total == second_total == 11
+    assert len(first_page) == 10
+    assert len(second_page) == 1
+
+    target = users[0]
+    suspended = await set_user_status(
+        db_session,
+        user_id=target.id,
+        admin_telegram_id=998877665,
+        status="suspended",
+        reason="Foydalanish qoidalarini buzgan.",
+    )
+    assert suspended.account_status == "suspended"
+    reactivated = await set_user_status(
+        db_session,
+        user_id=target.id,
+        admin_telegram_id=998877665,
+        status="active",
+        reason="Tekshiruvdan so‘ng faollashtirildi.",
+    )
+    assert reactivated.account_status == "active"
+    actions = list(
+        await db_session.scalars(
+            select(AdminAction).where(
+                AdminAction.target_user_id == target.id,
+                AdminAction.action.in_(["account_suspended", "account_active"]),
+            )
+        )
+    )
+    assert {action.actor_telegram_id for action in actions} == {998877665}
+    assert len(actions) == 2
 
 
 @pytest.mark.asyncio
@@ -361,7 +444,63 @@ async def test_worker_skips_user_who_opts_out_after_broadcast_confirmation(db_se
     assert all(chat_id != user.telegram_id for chat_id, _ in bot.messages)
     assert len(bot.messages) == 1
     assert bot.messages[0][0] == 998877665
+    job_after = await db_session.get(BroadcastJob, job_id)
+    await db_session.refresh(job_after)
     stats = await broadcast_stats(db_session, job_id)
     assert stats["status"] == "completed"
     assert stats["skipped"] == 1
+    assert stats["remaining"] == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_tracks_successful_broadcast_delivery(db_session, monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from mindora import broadcast_worker
+
+    user = await _registered_user(db_session, 456002004)
+    job = BroadcastJob(
+        status="queued",
+        audience="service",
+        message_text="Muhim xizmat e’loni",
+        initiated_by_telegram_id=998877665,
+    )
+    db_session.add(job)
+    await db_session.flush()
+    recipient = BroadcastRecipient(job_id=job.id, user_id=user.id, status="pending", attempts=0)
+    db_session.add(recipient)
+    await db_session.flush()
+    recipient_id = recipient.id
+    job_id = job.id
+    await db_session.commit()
+
+    test_factory = async_sessionmaker(
+        db_session.info["test_async_engine"],
+        expire_on_commit=False,
+    )
+    monkeypatch.setattr(broadcast_worker, "SessionFactory", test_factory)
+
+    class RecordingBot:
+        def __init__(self):
+            self.messages = []
+
+        async def send_message(self, chat_id, text, **_kwargs):
+            self.messages.append((chat_id, text))
+
+    bot = RecordingBot()
+    assert await broadcast_worker._send_one(bot)
+    recipient_after = await db_session.get(BroadcastRecipient, recipient_id)
+    await db_session.refresh(recipient_after)
+    assert recipient_after.status == "sent"
+    assert any(
+        chat_id == user.telegram_id and text == "Muhim xizmat e’loni"
+        for chat_id, text in bot.messages
+    )
+    assert any(chat_id == 998877665 and "yakunlandi" in text for chat_id, text in bot.messages)
+    job_after = await db_session.get(BroadcastJob, job_id)
+    await db_session.refresh(job_after)
+    stats = await broadcast_stats(db_session, job_id)
+    assert stats["status"] == "completed"
+    assert stats["sent"] == 1
+    assert stats["failed"] == 0
     assert stats["remaining"] == 0

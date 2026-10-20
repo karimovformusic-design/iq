@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from aiogram import Bot
 from aiogram.exceptions import (
     TelegramAPIError,
+    TelegramBadRequest,
     TelegramForbiddenError,
     TelegramNetworkError,
     TelegramRetryAfter,
@@ -27,9 +28,23 @@ from mindora.services import broadcast_stats
 
 logger = logging.getLogger("mindora.broadcast")
 
+UNREACHABLE_MESSAGE_MARKERS = (
+    "chat not found",
+    "user is deactivated",
+    "bot was blocked by the user",
+    "bot can't initiate conversation",
+    "bot cannot initiate conversation",
+    "user not found",
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_unreachable_bad_request(error: TelegramBadRequest) -> bool:
+    message = (error.message or "").casefold()
+    return any(marker in message for marker in UNREACHABLE_MESSAGE_MARKERS)
 
 
 def _entities(raw: list[dict] | None) -> list[MessageEntity] | None:
@@ -247,6 +262,12 @@ async def _send_one(bot: Bot) -> bool:
         # Delivery may have reached Telegram before the connection timed out.
         # Treat it as terminal rather than risk a duplicate after restart.
         await _finish(bot, recipient.id, job.id, "failed", "delivery_uncertain")
+    except TelegramBadRequest as error:
+        if _is_unreachable_bad_request(error):
+            await _mark_blocked(bot, recipient.id, job.id, user.id)
+        else:
+            await _finish(bot, recipient.id, job.id, "failed", "telegram_rejected")
+            logger.warning("Broadcast delivery rejected by Telegram (%s).", type(error).__name__)
     except TelegramAPIError as error:
         code = "invalid_media" if job.photo_file_id else "telegram_rejected"
         await _finish(bot, recipient.id, job.id, "failed", code)

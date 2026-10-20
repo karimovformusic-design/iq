@@ -46,6 +46,8 @@ class Settings(BaseSettings):
             "postgresql+asyncpg://"
         ):
             raise ValueError("Production deployments require a PostgreSQL DATABASE_URL.")
+        if self.app_environment.lower() in {"production", "prod"} and not self.admin_ids:
+            raise ValueError("Production deployments require at least one numeric ADMIN_IDS value.")
         return self
 
     @cached_property

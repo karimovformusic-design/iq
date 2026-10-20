@@ -47,13 +47,13 @@ Users can take three age-banded tests and request a private report for 11,900 UZ
 ## User preferences
 Payment defaults: recipient Karimov Nosirjon; card 5614684702056944; 11,900 UZS per report; administrator contact @Karimov_112.
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+Keep the payment defaults and assessment disclaimers consistent with `README.md`.
 
 ## Gotchas
 - Configure `ADMIN_IDS` with positive numeric Telegram IDs; until then, nobody can open the admin panel.
 - Railway polling deployment should use one replica. PostgreSQL must be configured before the container starts; startup runs Alembic and the idempotent seed.
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Do not run the Replit bot workflow and Railway service with the same Telegram token at the same time.
 
 ## Pointers
 
