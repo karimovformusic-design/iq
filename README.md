@@ -91,21 +91,27 @@ If it is already a Git repository, use its existing remote and push the new comm
 
 ## Railway deployment
 
-1. In Railway, use exactly one application service for the MINDORA bot plus its PostgreSQL resource. `@workspace/api-server`, `@workspace/api-spec`, and other pnpm workspace packages are not the Telegram bot; disable unused Railway application services only after confirming they are not the PostgreSQL resource. Do not delete the database or its volume.
-2. For the MINDORA service only, set Root Directory to the repository root (`/`) and Railway Config File to `/railway/mindora.json`. This service-specific config selects the Python Dockerfile, starts `/app/entrypoint.sh`, and checks `/healthz`. Set the Dashboard Start Command to `sh /app/entrypoint.sh` as well; do not leave a `pnpm` command there.
+1. Use exactly one Railway application service for the MINDORA bot and a PostgreSQL resource in the same project/environment. `@workspace/api-server`, `@workspace/api-spec`, and other pnpm workspace packages are not the Telegram bot. Stop unused application services only after confirming they are not the PostgreSQL resource. Do not delete the database or its volume.
+2. Set the MINDORA service's Root Directory to the repository root (`/`). Railway detects the root `Dockerfile`; choose the Dockerfile builder if Railway asks. Clear any old `pnpm` Build or Start Command overrides. The Start Command can be left unset to use the Dockerfile's `CMD`, or explicitly set to `sh /app/entrypoint.sh`. Set the Healthcheck Path to `/healthz`. The app listens on Railway's injected `PORT`; it does not need a public domain for Telegram long polling.
 3. Add or keep a PostgreSQL service in the same Railway project and production environment. In the bot service's Variables, reference that service's `DATABASE_URL` (for a PostgreSQL service named `Postgres`, Railway's reference syntax is `${{Postgres.DATABASE_URL}}`). Use the actual service name; do not copy a Replit database URL or invent a hostname.
-4. In the bot service's variables, set:
+4. In the bot service's Variables, set:
    - `TELEGRAM_BOT_TOKEN` — the token from BotFather.
    - `DATABASE_URL` — the PostgreSQL service reference described above.
    - `ADMIN_IDS` — comma-separated numeric Telegram administrator IDs.
    - `APP_ENV=production`.
-5. Keep exactly **one bot replica** and stop the Replit bot workflow while Railway is running. Telegram long polling allows only one active poller per bot token. The app listens on Railway's injected `PORT`.
+5. Keep exactly **one bot replica** and stop the Replit bot workflow while Railway is running. Telegram long polling allows only one active poller per bot token.
 6. Deploy. `entrypoint.sh` runs `alembic upgrade head`, seeds the test bank idempotently, and then starts Telegram polling. Persistent users, payments, and broadcast queues live in PostgreSQL, not the container filesystem.
-7. Check Railway logs for the startup line `MINDORA bot connected; polling Telegram updates.` Then test `/start`, `/id`, a test attempt, receipt upload, admin review, and a small confirmed broadcast before serving real users.
+7. Check Railway logs for `MINDORA bot connected; polling Telegram updates.` Then test `/start`, `/id`, a test attempt, receipt upload, admin review, and a small confirmed broadcast before serving real users.
 
 Do not put the bot token, database URL, card number, receipts, or private reports in GitHub. Configure the token and database URL in Railway's variable manager.
 
-Railway's current documentation says Config as Code files are supported for existing services until 2026-12-01, after which they stop being read. The config is deliberately stored outside the repository root so it cannot be auto-applied to every workspace service; select `/railway/mindora.json` only on the MINDORA service. The Dashboard Start Command and health-check path should also be set to `sh /app/entrypoint.sh` and `/healthz` for operation after that cutoff. The configuration file does not create PostgreSQL or set secrets. Do not apply project-level Railway IaC without reviewing its plan, because it can modify or remove existing services.
+`railway/mindora.json` is retained only for an already-existing Railway service that was previously configured to use that legacy Config as Code file. Railway documents that new services cannot opt in and that existing services stop reading Config as Code on 2026-12-01. For a new service, or to prepare an existing service for that cutoff, clear the Railway Config File path in that service's Settings and use the Dashboard settings in step 2. If the legacy file is selected, its build/deploy values override Dashboard values. The file does not create PostgreSQL or set secrets. Do not apply project-level Railway Infrastructure as Code without reviewing its plan, because it can modify or remove existing services.
+
+Troubleshooting:
+
+- If logs say `The executable 'pnpm' could not be found`, an old workspace Start Command is overriding the Dockerfile. Clear that override or set it to `sh /app/entrypoint.sh`.
+- If migrations fail with `socket.gaierror` or a hostname lookup error, check that `DATABASE_URL` references the real PostgreSQL service in the same Railway environment. Do not guess or manually type a database hostname.
+- If Telegram polling reports that another poller is active, stop the Replit workflow or other service using the same bot token. Do not run two bot replicas.
 
 ## Data and migration notes
 
